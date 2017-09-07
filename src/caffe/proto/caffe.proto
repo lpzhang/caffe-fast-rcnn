@@ -418,6 +418,7 @@ message LayerParameter {
 // ZLP BEGIN from 777//
   optional ROICoordinateParameter roi_coordinate_param = 777;
   optional MultipleThresholdParameter multiple_threshold_param = 778;
+  optional ROIPatchReconstructionParameter roi_patch_reconstruction_param = 779;
 // ZLP END to 778//
 }
 
@@ -1532,5 +1533,11 @@ message ROICoordinateParameter {
 message MultipleThresholdParameter {
   repeated float threshold_point = 1; // 
   repeated uint32 threshold_value = 2; // 
+}
+
+// Message that stores parameters used by ROIPatchReconstructionLayer
+message ROIPatchReconstructionParameter {
+  optional uint32 height = 1[default = 0];  // height of output
+  optional uint32 width = 2 [default = 0];  // width of output
 }
 // ZLP END//

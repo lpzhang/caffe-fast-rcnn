@@ -41,6 +41,9 @@ void ROIPatchReconstructionLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bot
   CHECK_GT(height_in_, 0) << "height of input should be positive";
   CHECK_GT(width_in_, 0) << "width of input should be positive";
   top[0]->Reshape(num_, channels_, height_out_, width_out_);
+  // Init top[0] and set background have prob 1.0
+  caffe_set(top[0]->count(), Dtype(0), top[0]->mutable_cpu_data());
+  caffe_set(top[0]->count(2), Dtype(1), top[0]->mutable_cpu_data());
 }
 
 template <typename Dtype>

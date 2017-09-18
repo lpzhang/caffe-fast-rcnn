@@ -1,6 +1,6 @@
 #include <vector>
 
-#include "caffe/layers/roi_patch_reconstruction.hpp"
+#include "caffe/layers/roi_patch_reconstruction_layer.hpp"
 #include "caffe/util/interp.hpp"
 #include "caffe/util/math_functions.hpp"
 
@@ -50,6 +50,10 @@ template <typename Dtype>
 void ROIPatchReconstructionLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
     const vector<Blob<Dtype>*>& top) {
   const Dtype* bottom_rois = bottom[1]->cpu_data();
+  // Init top[0] and set background have prob 1.0
+  caffe_set(top[0]->count(), Dtype(0), top[0]->mutable_cpu_data());
+  caffe_set(top[0]->count(2), Dtype(1), top[0]->mutable_cpu_data());
+  
   // int roi_level = int(bottom_rois[0]);
   int x1 = static_cast<int>(bottom_rois[1]);
   int y1 = static_cast<int>(bottom_rois[2]);

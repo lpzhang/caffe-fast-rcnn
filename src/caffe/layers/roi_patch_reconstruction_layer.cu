@@ -1,6 +1,6 @@
 // #include <vector>
 
-// #include "caffe/layers/roi_patch_reconstruction.hpp"
+// #include "caffe/layers/roi_patch_reconstruction_layer.hpp"
 // #include "caffe/util/interp.hpp"
 // #include "caffe/util/math_functions.hpp"
 

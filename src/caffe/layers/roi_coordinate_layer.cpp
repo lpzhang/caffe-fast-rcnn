@@ -35,6 +35,9 @@ void ROICoordinateLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bottom,
   *   of ROI rectangle (including its boundaries).
   */
   top[1]->Reshape(bottom[0]->num(), 5, 1, 1);
+  // Init
+  caffe_set(top[0]->count(), Dtype(0), top[0]->mutable_cpu_data());
+  caffe_set(top[1]->count(), Dtype(0), top[1]->mutable_cpu_data());
 }
 
 template <typename Dtype>
@@ -43,6 +46,9 @@ void ROICoordinateLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
   const Dtype* bottom_data = bottom[0]->cpu_data();
   Dtype* top_data = top[0]->mutable_cpu_data();
   Dtype* top_rois = top[1]->mutable_cpu_data();
+  // Init
+  caffe_set(top[0]->count(), Dtype(0), top_data);
+  caffe_set(top[1]->count(), Dtype(0), top_rois);
   
   int dim = bottom[0]->shape(1);
   // Distance between values of axis in blob

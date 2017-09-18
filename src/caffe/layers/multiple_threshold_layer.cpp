@@ -32,6 +32,9 @@ void MultipleThresholdLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bott
     const vector<Blob<Dtype>*>& top) {
   const Dtype* bottom_data = bottom[0]->cpu_data();
   Dtype* top_data = top[0]->mutable_cpu_data();
+  // Init top
+  caffe_set(top[0]->count(), Dtype(0), top_data);
+  
   const int count = bottom[0]->count();
   const Dtype* threshold_point_data = threshold_point_.cpu_data();
   const int* threshold_value_data = threshold_value_.cpu_data();

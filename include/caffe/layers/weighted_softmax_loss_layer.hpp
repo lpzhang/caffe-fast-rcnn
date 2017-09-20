@@ -127,6 +127,9 @@ class WeightedSoftmaxWithLossLayer : public LossLayer<Dtype> {
   LossParameter_NormalizationMode normalization_;
 
   int softmax_axis_, outer_num_, inner_num_;
+
+  /// WeightedSoftmaxWithLossParameter
+  Blob<Dtype> label_weight_;  // cached for label_weight_
 };
 
 }  // namespace caffe

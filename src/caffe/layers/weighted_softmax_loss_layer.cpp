@@ -53,6 +53,38 @@ void WeightedSoftmaxWithLossLayer<Dtype>::Reshape(
     // softmax output
     top[1]->ReshapeLike(*bottom[0]);
   }
+  // ADD(ZLP)
+  // if size of bottom equal 3, then use bottom[2] as weighted blob
+  if (bottom.size() <= 2) {
+    const WeightedSoftmaxWithLossParameter& weighted_softmax_loss_param = this->layer_param_.weighted_softmax_loss_param();
+    CHECK_EQ(weighted_softmax_loss_param.label_weight_size(), weighted_softmax_loss_param.label_id_size())
+          << "label_weight_size must equal to label_id_size";
+    CHECK_LE(weighted_softmax_loss_param.label_id_size(), bottom[0]->count(softmax_axis_, softmax_axis_ + 1))
+          << "Number of label_id must not exceed the number of labels; ";
+
+    // Reshape and Init all labels have weight 1.
+    label_weight_.Reshape(bottom[0]->count(softmax_axis_, softmax_axis_ + 1), 1, 1, 1);
+    Dtype* label_weight_data = label_weight_.mutable_cpu_data();
+    caffe_set(label_weight_.count(), Dtype(1), label_weight_data);
+
+    // Set weight
+    for (int i = 0; i < weighted_softmax_loss_param.label_weight_size(); ++i) {
+      int label_id = weighted_softmax_loss_param.label_id(i);
+      CHECK_GE(label_id, 0)
+          << "label_id must greater than or equal to 0";
+      CHECK_LT(label_id, bottom[0]->count(softmax_axis_, softmax_axis_ + 1))
+          << "label_id must not exceed number of prediction labels; "
+          << "e.g., if softmax axis == 1 and prediction shape is (N, C, H, W), "
+          << "label_id must be integer values in {0, 1, ..., C-1}.";
+      label_weight_data[label_id] = weighted_softmax_loss_param.label_weight(i);
+    }
+    for (int i = 0; i < bottom[0]->count(softmax_axis_, softmax_axis_ + 1); ++i) {
+      LOG(INFO) << label_weight_data[i];
+    }
+  } else {
+    LOG(INFO) << "Use bottom[2] as weighted blob";
+  }
+  // END(ZLP)
 }
 
 template <typename Dtype>
@@ -93,8 +125,14 @@ void WeightedSoftmaxWithLossLayer<Dtype>::Forward_cpu(
   const Dtype* prob_data = prob_.cpu_data();
   const Dtype* label = bottom[1]->cpu_data();
   // ADD(ZLP)
-  // Get sample_weight blob from bottom[2]
-  const Dtype* sample_weight = bottom[2]->cpu_data();
+  // Get label_weight_data
+  const Dtype* label_weight_data;
+  if (bottom.size() <= 2) {
+    label_weight_data = label_weight_.cpu_data();
+  } else {
+    // Get label_weight_data from bottom[2]
+    label_weight_data = bottom[2]->cpu_data();
+  }
   // END(ZLP)
   int dim = prob_.count() / outer_num_;
   int count = 0;
@@ -110,8 +148,13 @@ void WeightedSoftmaxWithLossLayer<Dtype>::Forward_cpu(
       // ADD(ZLP)
       /* loss -= log(std::max(prob_data[i * dim + label_value * inner_num_ + j],
                            Dtype(FLT_MIN))); */
-      // Get sample_weight and then Weight the loss
-      Dtype w = sample_weight[i * inner_num_ + j];
+      // Get weight and then Weight the loss
+      Dtype w = 1;
+      if (bottom.size() <= 2) {
+        w = label_weight_data[label_value];
+      } else {
+        w = label_weight_data[i * inner_num_ + j];
+      }
       loss -= w * log(std::max(prob_data[i * dim + label_value * inner_num_ + j],
                            Dtype(FLT_MIN)));
       // END(ZLP)
@@ -137,8 +180,14 @@ void WeightedSoftmaxWithLossLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*
     caffe_copy(prob_.count(), prob_data, bottom_diff);
     const Dtype* label = bottom[1]->cpu_data();
     // ADD(ZLP)
-    // Get sample_weight blob from bottom[2]
-    const Dtype* sample_weight = bottom[2]->cpu_data();
+    // Get label_weight_data
+    const Dtype* label_weight_data;
+    if (bottom.size() <= 2) {
+      label_weight_data = label_weight_.cpu_data();
+    } else {
+      // Get label_weight_data from bottom[2]
+      label_weight_data = bottom[2]->cpu_data();
+    }
     // END(ZLP)
     int dim = prob_.count() / outer_num_;
     int count = 0;
@@ -153,7 +202,12 @@ void WeightedSoftmaxWithLossLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*
           bottom_diff[i * dim + label_value * inner_num_ + j] -= 1;
           // ADD(ZLP)
           // Get weight and Weight each bottom[0]->shape(softmax_axis_)
-          Dtype w = sample_weight[i * inner_num_ + j];
+          Dtype w = 1;
+          if (bottom.size() <= 2) {
+            w = label_weight_data[label_value];
+          } else {
+            w = label_weight_data[i * inner_num_ + j];
+          }
           for (int c = 0; c < bottom[0]->shape(softmax_axis_); ++c) {
             bottom_diff[i * dim + c * inner_num_ + j] *= w;
           }

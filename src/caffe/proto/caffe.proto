@@ -419,7 +419,8 @@ message LayerParameter {
   optional ROICoordinateParameter roi_coordinate_param = 777;
   optional MultipleThresholdParameter multiple_threshold_param = 778;
   optional ROIPatchReconstructionParameter roi_patch_reconstruction_param = 779;
-// ZLP END to 778//
+  optional WeightedSoftmaxWithLossParameter weighted_softmax_loss_param = 780;
+// ZLP END to 780//
 }
 
 // Message that stores parameters used to apply transformation
@@ -1539,5 +1540,11 @@ message MultipleThresholdParameter {
 message ROIPatchReconstructionParameter {
   optional uint32 height = 1[default = 0];  // height of output
   optional uint32 width = 2 [default = 0];  // width of output
+}
+
+// Message that stores parameters used by WeightedSoftmaxWithLossLayer
+message WeightedSoftmaxWithLossParameter {
+  repeated float label_weight = 1; // 
+  repeated uint32 label_id = 2; //
 }
 // ZLP END//

@@ -9,7 +9,7 @@ namespace caffe {
 
 template <typename Dtype>
 __global__ void WeightedSoftmaxLossForwardGPU(const int nthreads,
-          const Dtype* prob_data, const Dtype* label, const Dtype* sample_weight, Dtype* loss,
+          const Dtype* prob_data, const Dtype* label, const Dtype* label_weight_data, const int bottom_size, Dtype* loss,
           const int num, const int dim, const int spatial_dim,
           const bool has_ignore_label_, const int ignore_label_,
           Dtype* counts) {
@@ -19,7 +19,12 @@ __global__ void WeightedSoftmaxLossForwardGPU(const int nthreads,
     const int label_value = static_cast<int>(label[n * spatial_dim + s]);
     // ADD(ZLP)
     // Get weight
-    const Dtype w = sample_weight[n * spatial_dim + s];
+    Dtype w = 1;
+    if (bottom_size <= 2) {
+      w = label_weight_data[label_value];
+    } else {
+      w = label_weight_data[n * spatial_dim + s];
+    }
     // END(ZLP)
     if (has_ignore_label_ && label_value == ignore_label_) {
       loss[index] = 0;
@@ -44,8 +49,14 @@ void WeightedSoftmaxWithLossLayer<Dtype>::Forward_gpu(
   const Dtype* prob_data = prob_.gpu_data();
   const Dtype* label = bottom[1]->gpu_data();
   // ADD(ZLP)
-  // Get sample_weight blob from bottom[2]
-  const Dtype* sample_weight = bottom[2]->gpu_data();
+  // Get label_weight_data
+  const Dtype* label_weight_data;
+  if (bottom.size() <= 2) {
+    label_weight_data = label_weight_.gpu_data();
+  } else {
+    // Get label_weight_data from bottom[2]
+    label_weight_data = bottom[2]->gpu_data();
+  }
   // END(ZLP)
   const int dim = prob_.count() / outer_num_;
   const int nthreads = outer_num_ * inner_num_;
@@ -58,7 +69,7 @@ void WeightedSoftmaxWithLossLayer<Dtype>::Forward_gpu(
   Dtype* counts = prob_.mutable_gpu_diff();
   // NOLINT_NEXT_LINE(whitespace/operators)
   WeightedSoftmaxLossForwardGPU<Dtype><<<CAFFE_GET_BLOCKS(nthreads),
-      CAFFE_CUDA_NUM_THREADS>>>(nthreads, prob_data, label, sample_weight, loss_data,
+      CAFFE_CUDA_NUM_THREADS>>>(nthreads, prob_data, label, label_weight_data, bottom.size(), loss_data,
       outer_num_, dim, inner_num_, has_ignore_label_, ignore_label_, counts);
   Dtype loss;
   caffe_gpu_asum(nthreads, loss_data, &loss);
@@ -78,7 +89,7 @@ void WeightedSoftmaxWithLossLayer<Dtype>::Forward_gpu(
 
 template <typename Dtype>
 __global__ void WeightedSoftmaxLossBackwardGPU(const int nthreads, const Dtype* top,
-          const Dtype* label, const Dtype* sample_weight, Dtype* bottom_diff, const int num, const int dim,
+          const Dtype* label, const Dtype* label_weight_data, const int bottom_size, Dtype* bottom_diff, const int num, const int dim,
           const int spatial_dim, const bool has_ignore_label_,
           const int ignore_label_, Dtype* counts) {
   const int channels = dim / spatial_dim;
@@ -88,8 +99,13 @@ __global__ void WeightedSoftmaxLossBackwardGPU(const int nthreads, const Dtype* 
     const int s = index % spatial_dim;
     const int label_value = static_cast<int>(label[n * spatial_dim + s]);
     // ADD(ZLP)
-    // Get weight 
-    const Dtype w = sample_weight[n * spatial_dim + s];
+    // Get weight
+    Dtype w = 1;
+    if (bottom_size <= 2) {
+      w = label_weight_data[label_value];
+    } else {
+      w = label_weight_data[n * spatial_dim + s];
+    }
     // END(ZLP)
 
     if (has_ignore_label_ && label_value == ignore_label_) {
@@ -124,8 +140,14 @@ void WeightedSoftmaxWithLossLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*
     caffe_gpu_memcpy(prob_.count() * sizeof(Dtype), prob_data, bottom_diff);
     const Dtype* label = bottom[1]->gpu_data();
     // ADD(ZLP)
-    // Get sample_weight blob
-    const Dtype* sample_weight = bottom[2]->gpu_data();
+    // Get label_weight_data
+    const Dtype* label_weight_data;
+    if (bottom.size() <= 2) {
+      label_weight_data = label_weight_.gpu_data();
+    } else {
+      // Get label_weight_data from bottom[2]
+      label_weight_data = bottom[2]->gpu_data();
+    }
     // END(ZLP)
     const int dim = prob_.count() / outer_num_;
     const int nthreads = outer_num_ * inner_num_;
@@ -134,7 +156,7 @@ void WeightedSoftmaxWithLossLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*
     Dtype* counts = prob_.mutable_gpu_diff();
     // NOLINT_NEXT_LINE(whitespace/operators)
     WeightedSoftmaxLossBackwardGPU<Dtype><<<CAFFE_GET_BLOCKS(nthreads),
-        CAFFE_CUDA_NUM_THREADS>>>(nthreads, top_data, label, sample_weight, bottom_diff,
+        CAFFE_CUDA_NUM_THREADS>>>(nthreads, top_data, label, label_weight_data, bottom.size(), bottom_diff,
         outer_num_, dim, inner_num_, has_ignore_label_, ignore_label_, counts);
 
     Dtype valid_count = -1;

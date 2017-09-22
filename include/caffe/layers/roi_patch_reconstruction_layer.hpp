@@ -49,6 +49,9 @@ class ROIPatchReconstructionLayer : public Layer<Dtype> {
   int width_in_;
   int height_out_;
   int width_out_;
+
+  Blob<Dtype> in_;  // cached for in_
+  Blob<Dtype> out_;  // cached for out_
 };
 
 }  // namespace caffe

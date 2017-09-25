@@ -78,11 +78,9 @@ void WeightedSoftmaxWithLossLayer<Dtype>::Reshape(
           << "label_id must be integer values in {0, 1, ..., C-1}.";
       label_weight_data[label_id] = weighted_softmax_loss_param.label_weight(i);
     }
-    for (int i = 0; i < bottom[0]->count(softmax_axis_, softmax_axis_ + 1); ++i) {
-      LOG(INFO) << label_weight_data[i];
-    }
-  } else {
-    LOG(INFO) << "Use bottom[2] as weighted blob";
+    // for (int i = 0; i < bottom[0]->count(softmax_axis_, softmax_axis_ + 1); ++i) {
+    //   LOG(INFO) << label_weight_data[i];
+    // }
   }
   // END(ZLP)
 }

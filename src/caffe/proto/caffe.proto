@@ -377,7 +377,8 @@ message LayerParameter {
   optional ROIWarpingParameter roi_warping_param = 781;
   optional BatchNormParameter batch_norm_param = 782;
   optional ROIAlignPoolingParameter roi_align_pooling_param = 783;
-// ZLP END to 783//
+  optional TileParameter tile_param = 784;
+// ZLP END to 784//
 }
 
 // Message that stores parameters used to apply transformation
@@ -1452,5 +1453,14 @@ message ROIAlignPoolingParameter {
   // input scale to the scale used when pooling
   optional float spatial_scale = 3 [default = 1];
   optional int32 sample_num = 4 [default = 1];
+}
+
+// Message that stores parameters used by TileLayer
+message TileParameter {
+  // The index of the axis to tile.
+  optional int32 axis = 1 [default = 1];
+
+  // The number of copies (tiles) of the blob to output.
+  optional int32 tiles = 2;
 }
 // ZLP END//

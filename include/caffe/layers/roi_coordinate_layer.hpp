@@ -33,7 +33,8 @@ class ROICoordinateLayer : public Layer<Dtype> {
   // virtual void Backward_gpu(const vector<Blob<Dtype>*>& top,
   //     const vector<bool>& propagate_down, const vector<Blob<Dtype>*>& bottom);
 
-  int pad_;
+  int roi_num_;
+  Blob<int> pad_;
   float threshold_;
 };
 

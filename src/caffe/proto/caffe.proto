@@ -1527,7 +1527,7 @@ message PReLUParameter {
 message ROICoordinateParameter {
   // Pad are all given as a single value for equal
   // dimensions in height and width or as Y, X pairs.
-  optional uint32 pad = 1 [default = 0]; // The padding size; defaults to 0
+  repeated uint32 pad = 1; // The padding size
   optional float threshold = 2 [default = 0]; // Strictly positive values
 }
 

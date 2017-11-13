@@ -13,18 +13,31 @@ template <typename Dtype>
 void ROICoordinateLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top) {
   ROICoordinateParameter roi_coordinate_param = this->layer_param_.roi_coordinate_param();
-  pad_ = roi_coordinate_param.pad();
   threshold_ = roi_coordinate_param.threshold();
-  CHECK_GE(pad_, 0)
-      << "pad must be >= 0";
   CHECK_GE(threshold_, 0)
       << "threshold must be >= 0";
+  roi_num_ = roi_coordinate_param.pad_size();
+  LOG(INFO) << roi_num_;
+  // Reshape Pad_
+  if (roi_num_ == 0) {
+      roi_num_ = 1;
+      pad_.Reshape(1, 1, 1, 1);
+      int* pad_data = pad_.mutable_cpu_data();
+      pad_data[0] = 0;
+  } else {
+      pad_.Reshape(roi_num_, 1, 1, 1);
+      int* pad_data = pad_.mutable_cpu_data();
+      for (int i = 0; i < roi_num_; ++i) {
+          pad_data[i] = roi_coordinate_param.pad(i);
+          LOG(INFO) << pad_data[i];
+      }
+  }
 }
 
 template <typename Dtype>
 void ROICoordinateLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top) {
-  // mask shape should be (n,1,h,w)
+  // mask shape should be (n, 1, h, w)
   top[0]->Reshape(bottom[0]->num(), 1, bottom[0]->height(), bottom[0]->width());
   /* ROI
   *   top[1] shape should be (R, 5) or (R, 5, 1, 1)
@@ -34,7 +47,8 @@ void ROICoordinateLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bottom,
   *   instance in the first input and x1 y1 x2 y2 are 0-indexed coordinates
   *   of ROI rectangle (including its boundaries).
   */
-  top[1]->Reshape(bottom[0]->num(), 5, 1, 1);
+  int R = bottom[0]->num() * roi_num_;
+  top[1]->Reshape(R, 5, 1, 1);
   // Init
   caffe_set(top[0]->count(), Dtype(0), top[0]->mutable_cpu_data());
   caffe_set(top[1]->count(), Dtype(0), top[1]->mutable_cpu_data());
@@ -44,18 +58,18 @@ template <typename Dtype>
 void ROICoordinateLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
     const vector<Blob<Dtype>*>& top) {
   const Dtype* bottom_data = bottom[0]->cpu_data();
+  const int* pad_data = pad_.cpu_data();
   Dtype* top_data = top[0]->mutable_cpu_data();
   Dtype* top_rois = top[1]->mutable_cpu_data();
-  // Init
   caffe_set(top[0]->count(), Dtype(0), top_data);
   caffe_set(top[1]->count(), Dtype(0), top_rois);
-  
+
+  // Produce Mask
   int dim = bottom[0]->shape(1);
   // Distance between values of axis in blob
   int axis_dist = bottom[0]->count(1) / dim;
   int num = bottom[0]->count() / dim;
   int top_k = 1;
-
   std::vector<std::pair<Dtype, int> > bottom_data_vector(dim);
   for (int i = 0; i < num; ++i) {
     for (int j = 0; j < dim; ++j) {
@@ -78,6 +92,7 @@ void ROICoordinateLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
     }
   }
 
+  // Produce ROI
   int batch_size = top[0]->num();
   int height = top[0]->height();
   int width = top[0]->width();
@@ -103,46 +118,90 @@ void ROICoordinateLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
       y1 = 0;
       y2 = height - 1;
     }
-    //convert rectangle to square
+    // Get Original ROI Width and Height
     int rectangle_width = x2 - x1 + 1;
     int rectangle_height = y2 - y1 + 1;
-    int square_length = max(rectangle_width, rectangle_height) + 2 * pad_;
-    // square_length can not greater than height and width
-    square_length = (square_length < height) ? square_length : height;
-    square_length = (square_length < width) ? square_length: width; 
+    for (int roi_ind = 0; roi_ind < roi_num_; ++roi_ind) {
+        int roi_pad = pad_data[roi_ind];
+        //convert rectangle to square
+        int square_length = max(rectangle_width, rectangle_height) + 2 * roi_pad;
+        // square_length can not greater than height and width
+        square_length = (square_length < height) ? square_length : height;
+        square_length = (square_length < width) ? square_length: width;
+        // roi_x1, roi_y1, roi_x2, roi_y2
+        int roi_x1 = x1;
+        int roi_y1 = y1;
+        int roi_x2 = x2;
+        int roi_y2 = y2;
+        // update roi_x1
+        if (rectangle_width < square_length) {
+            roi_x1 -= (square_length - rectangle_width)/2;
+        }
+        // update roi_y1
+        if (rectangle_height < square_length) {
+            roi_y1 -= (square_length - rectangle_height)/2;
+        }
+        // prevent roi_x1, roi_y1 out of boundary
+        roi_x1 = max(roi_x1, 0);
+        roi_y1 = max(roi_y1, 0);
+        roi_x2 = square_length + roi_x1 - 1;
+        roi_y2 = square_length + roi_y1 - 1;
+        // prevent roi_x2, roi_y2 out of boundary
+        if (roi_x2 > (width - 1)) {
+            roi_x2 = width - 1;
+            roi_x1 = roi_x2 - square_length + 1;
+        }
+        if (roi_y2 > (height - 1)) {
+            roi_y2 = height - 1;
+            roi_y1 = roi_y2 - square_length + 1;
+        }
+        top_rois[0] = batch_ind;
+        top_rois[1] = roi_x1;
+        top_rois[2] = roi_y1;
+        top_rois[3] = roi_x2;
+        top_rois[4] = roi_y2;
+        top_rois += 5;
+    }
+
+    // int rectangle_width = x2 - x1 + 1;
+    // int rectangle_height = y2 - y1 + 1;
+    // int square_length = max(rectangle_width, rectangle_height) + 2 * pad_;
+    // // square_length can not greater than height and width
+    // square_length = (square_length < height) ? square_length : height;
+    // square_length = (square_length < width) ? square_length: width;
     // update x1
-    if (rectangle_width < square_length) {
-      x1 -= (square_length - rectangle_width)/2;
-    }
-    // update y1
-    if (rectangle_height < square_length) {
-      y1 -= (square_length - rectangle_height)/2;
-    }
+    // if (rectangle_width < square_length) {
+    //   x1 -= (square_length - rectangle_width)/2;
+    // }
+    // // update y1
+    // if (rectangle_height < square_length) {
+    //   y1 -= (square_length - rectangle_height)/2;
+    // }
     // prevent x1, y1 out of boundary
-    x1 = max(x1, 0);
-    y1 = max(y1, 0);
-    x2 = square_length + x1 - 1;
-    y2 = square_length + y1 - 1;
+    // x1 = max(x1, 0);
+    // y1 = max(y1, 0);
+    // x2 = square_length + x1 - 1;
+    // y2 = square_length + y1 - 1;
     // prevent x2, y2 out of boundary
-    if (x2 > (width - 1)) {
-      x2 = width - 1;
-      x1 = x2 - square_length + 1;
-    }
-    if (y2 > (height - 1)) {
-      y2 = height - 1;
-      y1 = y2 - square_length + 1;
-    }
+    // if (x2 > (width - 1)) {
+    //   x2 = width - 1;
+    //   x1 = x2 - square_length + 1;
+    // }
+    // if (y2 > (height - 1)) {
+    //   y2 = height - 1;
+    //   y1 = y2 - square_length + 1;
+    // }
     // x1 = max(x1 - pad_, 0);
     // y1 = max(y1 - pad_, 0);
     // x2 = min(x2 + pad_, width - 1);
     // y2 = min(y2 + pad_, height - 1);
 
-    top_rois[0] = batch_ind;
-    top_rois[1] = x1;
-    top_rois[2] = y1;
-    top_rois[3] = x2;
-    top_rois[4] = y2;
-    top_rois += 5;
+    // top_rois[0] = batch_ind;
+    // top_rois[1] = x1;
+    // top_rois[2] = y1;
+    // top_rois[3] = x2;
+    // top_rois[4] = y2;
+    // top_rois += 5;
   }
 }
 

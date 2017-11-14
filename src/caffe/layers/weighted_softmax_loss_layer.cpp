@@ -59,6 +59,8 @@ void WeightedSoftmaxWithLossLayer<Dtype>::Reshape(
     const WeightedSoftmaxWithLossParameter& weighted_softmax_loss_param = this->layer_param_.weighted_softmax_loss_param();
     CHECK_EQ(weighted_softmax_loss_param.label_weight_size(), weighted_softmax_loss_param.label_id_size())
           << "label_weight_size must equal to label_id_size";
+    CHECK_GT(weighted_softmax_loss_param.label_weight_size(), 0)
+          << "label_weight_size must Greater than 0";
     CHECK_LE(weighted_softmax_loss_param.label_id_size(), bottom[0]->count(softmax_axis_, softmax_axis_ + 1))
           << "Number of label_id must not exceed the number of labels; ";
 

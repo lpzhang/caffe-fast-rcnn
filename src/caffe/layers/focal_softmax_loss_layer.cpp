@@ -9,7 +9,7 @@ namespace caffe {
 
 template <typename Dtype>
 void FocalSoftmaxLossLayer<Dtype>::LayerSetUp(
-    const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top) 
+    const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top)
 {
   // softmax laye setup
   LossLayer<Dtype>::LayerSetUp(bottom, top);
@@ -30,7 +30,7 @@ void FocalSoftmaxLossLayer<Dtype>::LayerSetUp(
 
   // normalization
   if (!this->layer_param_.loss_param().has_normalization() &&
-       this->layer_param_.loss_param().has_normalize()) 
+       this->layer_param_.loss_param().has_normalize())
   {
     normalization_ = this->layer_param_.loss_param().normalize() ?
                      LossParameter_NormalizationMode_VALID :
@@ -56,7 +56,7 @@ void FocalSoftmaxLossLayer<Dtype>::LayerSetUp(
 
 template <typename Dtype>
 void FocalSoftmaxLossLayer<Dtype>::Reshape(
-    const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top) 
+    const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top)
 {
   // softmax laye reshape
   LossLayer<Dtype>::Reshape(bottom, top);
@@ -71,7 +71,7 @@ void FocalSoftmaxLossLayer<Dtype>::Reshape(
       << "e.g., if softmax axis == 1 and prediction shape is (N, C, H, W), "
       << "label count (number of labels) must be N*H*W, "
       << "with integer values in {0, 1, ..., C-1}.";
-  
+
   // softmax output
   if (top.size() >= 2) {
     top[1]->ReshapeLike(*bottom[0]);
@@ -87,11 +87,44 @@ void FocalSoftmaxLossLayer<Dtype>::Reshape(
   ones_.ReshapeLike(*bottom[0]);
   CHECK_EQ(prob_.count(), ones_.count());
   caffe_set(prob_.count(), Dtype(1), ones_.mutable_cpu_data());
+
+  // ADD(ZLP)
+  // if size of bottom equal 3, then use bottom[2] as weighted blob
+  if (bottom.size() <= 2) {
+    const WeightedSoftmaxWithLossParameter& weighted_softmax_loss_param = this->layer_param_.weighted_softmax_loss_param();
+    CHECK_EQ(weighted_softmax_loss_param.label_weight_size(), weighted_softmax_loss_param.label_id_size())
+          << "label_weight_size must equal to label_id_size";
+    CHECK_GT(weighted_softmax_loss_param.label_weight_size(), 0)
+          << "label_weight_size must Greater than 0";
+    CHECK_LE(weighted_softmax_loss_param.label_id_size(), bottom[0]->count(softmax_axis_, softmax_axis_ + 1))
+          << "Number of label_id must not exceed the number of labels; ";
+
+    // Reshape and Init all labels have weight 1.
+    label_weight_.Reshape(bottom[0]->count(softmax_axis_, softmax_axis_ + 1), 1, 1, 1);
+    Dtype* label_weight_data = label_weight_.mutable_cpu_data();
+    caffe_set(label_weight_.count(), Dtype(1), label_weight_data);
+
+    // Set weight
+    for (int i = 0; i < weighted_softmax_loss_param.label_weight_size(); ++i) {
+      int label_id = weighted_softmax_loss_param.label_id(i);
+      CHECK_GE(label_id, 0)
+          << "label_id must greater than or equal to 0";
+      CHECK_LT(label_id, bottom[0]->count(softmax_axis_, softmax_axis_ + 1))
+          << "label_id must not exceed number of prediction labels; "
+          << "e.g., if softmax axis == 1 and prediction shape is (N, C, H, W), "
+          << "label_id must be integer values in {0, 1, ..., C-1}.";
+      label_weight_data[label_id] = weighted_softmax_loss_param.label_weight(i);
+    }
+    // for (int i = 0; i < bottom[0]->count(softmax_axis_, softmax_axis_ + 1); ++i) {
+    //   LOG(INFO) << label_weight_data[i];
+    // }
+  }
+  // END(ZLP)
 }
 
 template <typename Dtype>
 Dtype FocalSoftmaxLossLayer<Dtype>::get_normalizer(
-    LossParameter_NormalizationMode normalization_mode, int valid_count) 
+    LossParameter_NormalizationMode normalization_mode, int valid_count)
 {
   Dtype normalizer;
   switch (normalization_mode) {
@@ -145,7 +178,7 @@ void FocalSoftmaxLossLayer<Dtype>::compute_intermediate_values_of_cpu() {
 
 template <typename Dtype>
 void FocalSoftmaxLossLayer<Dtype>::Forward_cpu(
-    const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top) 
+    const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top)
 {
   // The forward pass computes the softmax prob values.
   softmax_layer_->Forward(softmax_bottom_vec_, softmax_top_vec_);
@@ -155,6 +188,17 @@ void FocalSoftmaxLossLayer<Dtype>::Forward_cpu(
   const Dtype* label           = bottom[1]->cpu_data();
   const Dtype* log_prob_data   = log_prob_.cpu_data();
   const Dtype* power_prob_data = power_prob_.cpu_data();
+
+  // ADD(ZLP)
+  // Get label_weight_data
+  const Dtype* label_weight_data;
+  if (bottom.size() <= 2) {
+    label_weight_data = label_weight_.cpu_data();
+  } else {
+    // Get label_weight_data from bottom[2]
+    label_weight_data = bottom[2]->cpu_data();
+  }
+  // END(ZLP)
 
   // compute loss
   int count    = 0;
@@ -174,7 +218,19 @@ void FocalSoftmaxLossLayer<Dtype>::Forward_cpu(
       // FL(p_t) = -(1 - p_t) ^ gamma * log(p_t)
       // loss -= std::max(power_prob_data[index] * log_prob_data[index],
       //                      Dtype(log(Dtype(FLT_MIN))));
-      loss -= power_prob_data[index] * log_prob_data[index];
+      // loss -= power_prob_data[index] * log_prob_data[index];
+
+      // ADD(ZLP)
+      // Get weight and then Weight the loss
+      Dtype w = 1;
+      if (bottom.size() <= 2) {
+        w = label_weight_data[label_value];
+      } else {
+        w = label_weight_data[i * inner_num_ + j];
+      }
+      loss -= w * power_prob_data[index] * log_prob_data[index];
+      // END(ZLP)
+
       ++count;
     }
   }
@@ -188,7 +244,7 @@ void FocalSoftmaxLossLayer<Dtype>::Forward_cpu(
 
 template <typename Dtype>
 void FocalSoftmaxLossLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
-    const vector<bool>& propagate_down, const vector<Blob<Dtype>*>& bottom) 
+    const vector<bool>& propagate_down, const vector<Blob<Dtype>*>& bottom)
 {
   if (propagate_down[1]) {
     LOG(FATAL) << this->type()
@@ -200,9 +256,20 @@ void FocalSoftmaxLossLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
     Dtype* bottom_diff     = bottom[0]->mutable_cpu_diff();
     const Dtype* prob_data = prob_.cpu_data();
     const Dtype* label     = bottom[1]->cpu_data();
-    // intermidiate  
+    // intermidiate
     const Dtype* log_prob_data   = log_prob_.cpu_data();
     const Dtype* power_prob_data = power_prob_.cpu_data();
+
+    // ADD(ZLP)
+    // Get label_weight_data
+    const Dtype* label_weight_data;
+    if (bottom.size() <= 2) {
+      label_weight_data = label_weight_.cpu_data();
+    } else {
+      // Get label_weight_data from bottom[2]
+      label_weight_data = bottom[2]->cpu_data();
+    }
+    // END(ZLP)
 
     int count       = 0;
     int channels    = bottom[0]->shape(softmax_axis_);
@@ -213,7 +280,7 @@ void FocalSoftmaxLossLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
       for (int j = 0; j < inner_num_; ++j) {
         // label
         const int label_value = static_cast<int>(label[i * inner_num_ + j]);
-        
+
         // ignore label
         if (has_ignore_label_ && label_value == ignore_label_) {
           for (int c = 0; c < channels; ++c) {
@@ -224,22 +291,44 @@ void FocalSoftmaxLossLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
 
         // the gradient from FL w.r.t p_t, here ignore the `sign`
         int ind_i  = i * dim + label_value * inner_num_ + j; // index of ground-truth label
-        Dtype grad = 0 - gamma_ * (power_prob_data[ind_i] / std::max(1 - prob_data[ind_i], eps)) 
+        Dtype grad = 0 - gamma_ * (power_prob_data[ind_i] / std::max(1 - prob_data[ind_i], eps))
                                 * log_prob_data[ind_i] * prob_data[ind_i]
                        + power_prob_data[ind_i];
         // the gradient w.r.t input data x
+        // for (int c = 0; c < channels; ++c) {
+        //   int ind_j = i * dim + c * inner_num_ + j;
+        //   if(c == label_value) {
+        //     CHECK_EQ(ind_i, ind_j);
+        //     // if i == j, (here i,j are refered for derivative of softmax)
+        //     bottom_diff[ind_j] = grad * (prob_data[ind_i] - 1);
+        //   } else {
+        //     // if i != j, (here i,j are refered for derivative of softmax)
+        //     bottom_diff[ind_j] = grad * prob_data[ind_j];
+        //   }
+        // }
+
+        // ADD(ZLP)
+        // Get weight and Weight each bottom[0]->shape(softmax_axis_)
+        Dtype w = 1;
+        if (bottom.size() <= 2) {
+            w = label_weight_data[label_value];
+        } else {
+            w = label_weight_data[i * inner_num_ + j];
+        }
         for (int c = 0; c < channels; ++c) {
           int ind_j = i * dim + c * inner_num_ + j;
           if(c == label_value) {
             CHECK_EQ(ind_i, ind_j);
             // if i == j, (here i,j are refered for derivative of softmax)
-            bottom_diff[ind_j] = grad * (prob_data[ind_i] - 1);
+            bottom_diff[ind_j] = w * grad * (prob_data[ind_i] - 1);
           } else {
             // if i != j, (here i,j are refered for derivative of softmax)
-            bottom_diff[ind_j] = grad * prob_data[ind_j];
+            bottom_diff[ind_j] = w * grad * prob_data[ind_j];
           }
         }
-        // count                    
+        // END(ZLP)
+
+        // count
         ++count;
       }
     }

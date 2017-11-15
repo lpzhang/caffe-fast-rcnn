@@ -46,7 +46,7 @@ class FocalSoftmaxLossLayer : public LossLayer<Dtype> {
 
   void compute_intermediate_values_of_cpu();
   void compute_intermediate_values_of_gpu();
-  
+
   /// The internal SoftmaxLayer used to map predictions to a distribution.
   shared_ptr<Layer<Dtype> > softmax_layer_;
   /// prob stores the output probability predictions from the SoftmaxLayer.
@@ -69,6 +69,9 @@ class FocalSoftmaxLossLayer : public LossLayer<Dtype> {
 
   Dtype alpha_, beta_, gamma_;
   int softmax_axis_, outer_num_, inner_num_;
+
+  /// WeightedSoftmaxWithLossParameter
+  Blob<Dtype> label_weight_;  // cached for label_weight_
 };
 
 }  // namespace caffe

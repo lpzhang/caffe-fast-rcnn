@@ -46,6 +46,8 @@ __global__ void FocalSoftmaxLossForwardGPU(const int nthreads,
           const Dtype* log_prob_data, 
           const Dtype* power_prob_data,
           const Dtype* label, 
+          const Dtype* label_weight_data, 
+          const int bottom_size, 
           Dtype* loss,
           const int num, 
           const int dim, 
@@ -58,13 +60,30 @@ __global__ void FocalSoftmaxLossForwardGPU(const int nthreads,
     const int n = index / spatial_dim;
     const int s = index % spatial_dim;
     const int label_value = static_cast<int>(label[n * spatial_dim + s]);
+
+    // ADD(ZLP)
+    // Get weight
+    Dtype w = 1;
+    if (bottom_size <= 2) {
+      w = label_weight_data[label_value];
+    } else {
+      w = label_weight_data[n * spatial_dim + s];
+    }
+    // END(ZLP)
+
     if (has_ignore_label_ && label_value == ignore_label_) {
       loss[index]   = 0;
       counts[index] = 0;
     } else {
       int ind       = n * dim + label_value * spatial_dim + s;
       // loss[index]   = -max(power_prob_data[ind] * log_prob_data[ind], Dtype(log(Dtype(FLT_MIN))));
-      loss[index]   = -power_prob_data[ind] * log_prob_data[ind];
+      // loss[index]   = -power_prob_data[ind] * log_prob_data[ind];
+
+      // ADD(ZLP)
+      // Weighted
+      loss[index]   = -w * power_prob_data[ind] * log_prob_data[ind];
+      // END(ZLP)
+
       counts[index] = 1;
     }
   }
@@ -79,6 +98,17 @@ void FocalSoftmaxLossLayer<Dtype>::Forward_gpu(
 
   // compute all needed values
   compute_intermediate_values_of_gpu();
+
+  // ADD(ZLP)
+  // Get label_weight_data
+  const Dtype* label_weight_data;
+  if (bottom.size() <= 2) {
+    label_weight_data = label_weight_.gpu_data();
+  } else {
+    // Get label_weight_data from bottom[2]
+    label_weight_data = bottom[2]->gpu_data();
+  }
+  // END(ZLP)
 
   // const Dtype* prob_data       = prob_.gpu_data();
   const Dtype* log_prob_data   = log_prob_.gpu_data();
@@ -99,7 +129,7 @@ void FocalSoftmaxLossLayer<Dtype>::Forward_gpu(
   // NOLINT_NEXT_LINE(whitespace/operators)
   FocalSoftmaxLossForwardGPU<Dtype><<<CAFFE_GET_BLOCKS(nthreads),
       CAFFE_CUDA_NUM_THREADS>>>(nthreads, log_prob_data, power_prob_data, 
-      label, loss_data,outer_num_, dim, inner_num_, has_ignore_label_, ignore_label_, counts);
+      label, label_weight_data, bottom.size(), loss_data,outer_num_, dim, inner_num_, has_ignore_label_, ignore_label_, counts);
 
   Dtype loss;
   caffe_gpu_asum(nthreads, loss_data, &loss);
@@ -122,6 +152,8 @@ template <typename Dtype>
 __global__ void FocalSoftmaxLossBackwardGPU(const int nthreads, 
           const Dtype* top,
           const Dtype* label,
+          const Dtype* label_weight_data,
+          const int bottom_size,
           const Dtype* prob_data,
           const Dtype* log_prob_data,
           const Dtype* power_prob_data,
@@ -142,6 +174,16 @@ __global__ void FocalSoftmaxLossBackwardGPU(const int nthreads,
     const int s = index % spatial_dim;
     const int label_value = static_cast<int>(label[n * spatial_dim + s]);
 
+    // ADD(ZLP)
+    // Get weight
+    Dtype w = 1;
+    if (bottom_size <= 2) {
+      w = label_weight_data[label_value];
+    } else {
+      w = label_weight_data[n * spatial_dim + s];
+    }
+    // END(ZLP)
+
     if (has_ignore_label_ && label_value == ignore_label_) {
       for (int c = 0; c < channels; ++c) {
         bottom_diff[n * dim + c * spatial_dim + s] = 0;
@@ -154,16 +196,31 @@ __global__ void FocalSoftmaxLossBackwardGPU(const int nthreads,
                              * log_prob_data[ind_i] * prob_data[ind_i]
                      + power_prob_data[ind_i];
       // the gradient w.r.t input data x
+      // for (int c = 0; c < channels; ++c) {
+      //   int ind_j = n * dim + c * spatial_dim + s;
+      //   if(c == label_value) {
+      //     // if i == j, (here i,j are refered for derivative of softmax)
+      //     bottom_diff[ind_j] = grad * (prob_data[ind_i] - 1);
+      //   } else {
+      //     // if i != j, (here i,j are refered for derivative of softmax)
+      //     bottom_diff[ind_j] = grad * prob_data[ind_j];
+      //   }
+      // }
+
+      // ADD(ZLP)
+      // Weight each channel
       for (int c = 0; c < channels; ++c) {
         int ind_j = n * dim + c * spatial_dim + s;
         if(c == label_value) {
           // if i == j, (here i,j are refered for derivative of softmax)
-          bottom_diff[ind_j] = grad * (prob_data[ind_i] - 1);
+          bottom_diff[ind_j] = w * grad * (prob_data[ind_i] - 1);
         } else {
           // if i != j, (here i,j are refered for derivative of softmax)
-          bottom_diff[ind_j] = grad * prob_data[ind_j];
+          bottom_diff[ind_j] = w * grad * prob_data[ind_j];
         }
       }
+      // END(ZLP)
+
       // count
       counts[index] = 1;
     }
@@ -186,6 +243,17 @@ void FocalSoftmaxLossLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
     const int nthreads     = outer_num_ * inner_num_;
     const Dtype eps        = 1e-10;
 
+    // ADD(ZLP)
+    // Get label_weight_data
+    const Dtype* label_weight_data;
+    if (bottom.size() <= 2) {
+      label_weight_data = label_weight_.gpu_data();
+    } else {
+      // Get label_weight_data from bottom[2]
+      label_weight_data = bottom[2]->gpu_data();
+    }
+    // END(ZLP)
+
     // intermidiate  
     const Dtype* log_prob_data   = log_prob_.gpu_data();
     const Dtype* power_prob_data = power_prob_.gpu_data();
@@ -196,7 +264,7 @@ void FocalSoftmaxLossLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
 
     // NOLINT_NEXT_LINE(whitespace/operators)
     FocalSoftmaxLossBackwardGPU<Dtype><<<CAFFE_GET_BLOCKS(nthreads),
-        CAFFE_CUDA_NUM_THREADS>>>(nthreads, top_data, label, prob_data, log_prob_data, power_prob_data,
+        CAFFE_CUDA_NUM_THREADS>>>(nthreads, top_data, label, label_weight_data, bottom.size(), prob_data, log_prob_data, power_prob_data,
         bottom_diff, outer_num_, dim, inner_num_, gamma_, has_ignore_label_, ignore_label_, eps, counts);
 
     // Only launch another CUDA kernel if we actually need the count of valid outputs.

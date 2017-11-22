@@ -1568,7 +1568,8 @@ message ROICoordinateV2Parameter {
   // Pad are all given as a single value for equal
   // dimensions in height and width or as Y, X pairs.
   optional uint32 roi_num = 1[default = 1]; // number of roi
-  repeated float threshold = 2 ; // threshold for split interval
-  repeated float scale = 2 ; // Strictly positive values
+  optional float threshold = 2; 
+  repeated float point = 3; // point for split interval
+  repeated float scale = 4; // Strictly positive values
 }
 // ZLP END//

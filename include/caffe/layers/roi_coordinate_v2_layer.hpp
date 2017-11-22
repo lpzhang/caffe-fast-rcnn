@@ -34,7 +34,8 @@ class ROICoordinateV2Layer : public Layer<Dtype> {
   //     const vector<bool>& propagate_down, const vector<Blob<Dtype>*>& bottom);
 
   int roi_num_;
-  Blob<Dtype> threshold_;  // cached for threshold_
+  Dtype threshold_;
+  Blob<Dtype> point_;  // cached for threshold_
   Blob<Dtype> scale_;  // cached for scale_
 };
 

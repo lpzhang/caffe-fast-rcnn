@@ -14,24 +14,24 @@ void ROICoordinateV2Layer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top) {
   ROICoordinateV2Parameter roi_coordinate_v2_param = this->layer_param_.roi_coordinate_v2_param();
   roi_num_ = roi_coordinate_v2_param.roi_num();
-  int threshold_size = roi_coordinate_v2_param.threshold_size();
+  threshold_ = roi_coordinate_v2_param.threshold();
+  int point_size = roi_coordinate_v2_param.point_size();
   int scale_size = roi_coordinate_v2_param.scale_size();
-  CHECK_GE(threshold_size, 0) << "threshold_size must be >= 0";
+  CHECK_GE(point_size, 0) << "point_size must be >= 0";
   CHECK_GE(scale_size, 0) << "scale_size must be >= 0";
   CHECK_GE(roi_num_, 0) << "roi_num must be >= 0";
-  CHECK_EQ(roi_num_, scale_size - threshold_size) << "scale_size - threshold_size must equal to roi_num";
+  CHECK_EQ(roi_num_, scale_size - point_size) << "scale_size - point_size must equal to roi_num";
   LOG(INFO) << roi_num_;
   // Reshape 
-  threshold_.Reshape(threshold_size, 1, 1, 1);
-  scale_.Reshape(scale_size, 1, ,1 ,1);
-  Dtype* threshold_data = threshold_.mutable_cpu_data();
+  point_.Reshape(point_size, 1, 1, 1);
+  scale_.Reshape(scale_size, 1, 1, 1);
+  Dtype* point_data = point_.mutable_cpu_data();
   Dtype* scale_data = scale_.mutable_cpu_data();
-  for (int i = 0; i < threshold_size; ++i) {
-    threshold_data[i] = roi_coordinate_v2_param.threshold(i);
+  for (int i = 0; i < point_size; ++i) {
+    point_data[i] = roi_coordinate_v2_param.point(i);
   }
   for (int i = 0; i < scale_size; ++i) {
     scale_data[i] = roi_coordinate_v2_param.scale(i);
-    // LOG(INFO) << threshold_value_data[i];
   }
 }
 
@@ -59,9 +59,9 @@ template <typename Dtype>
 void ROICoordinateV2Layer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
     const vector<Blob<Dtype>*>& top) {
   const Dtype* bottom_data = bottom[0]->cpu_data();
-  const Dtype* threshold_data = threshold_.cpu_data();
+  const Dtype* point_data = point_.cpu_data();
   const Dtype* scale_data = scale_.cpu_data();
-  int threshold_size = threshold_.num();
+  int point_size = point_.num();
   int scale_size = scale_.num();
   Dtype* top_data = top[0]->mutable_cpu_data();
   Dtype* top_rois = top[1]->mutable_cpu_data();
@@ -130,13 +130,13 @@ void ROICoordinateV2Layer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom
     /* Look for the threshold interval that square_length belongs to
       and its corresponding scale value for each roi
     */
-    int thres_dist = threshold_size / roi_num_;
+    int point_dist = point_size / roi_num_;
     int scale_dist = scale_size / roi_num_;
     for (int roi_ind = 0; roi_ind < roi_num_; ++roi_ind) {
-      int thres_index = roi_ind * thres_dist;
+      int point_index = roi_ind * point_dist;
       int scale_index = roi_ind * scale_dist;
-      for (int t = 0; t < thres_dist; ++t) {
-        if (square_length >= threshold_data[thres_index + t]) {
+      for (int p = 0; p < point_dist; ++p) {
+        if (square_length >= point_data[point_index + p]) {
           scale_index += 1;
         } else {
           break;

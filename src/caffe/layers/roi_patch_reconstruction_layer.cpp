@@ -40,6 +40,7 @@ void ROIPatchReconstructionLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bot
   CHECK_GT(height_in_, 0) << "height of input should be positive";
   CHECK_GT(width_in_, 0) << "width of input should be positive";
   top[0]->Reshape(num_, channels_, height_out_, width_out_);
+  // for each instance
   in_.Reshape(1, channels_, height_in_, width_in_);
   out_.Reshape(1, channels_, height_out_, width_out_);
 
@@ -49,9 +50,9 @@ void ROIPatchReconstructionLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bot
   // for (int i = 0; i < num_; ++i) {
   //   caffe_set(top[0]->count(2), Dtype(1), top_data + top[0]->offset(i));
   // }
-  // caffe_set(in_.count(), Dtype(0), in_.mutable_cpu_data());
+  caffe_set(in_.count(), Dtype(0), in_.mutable_cpu_data());
   caffe_set(out_.count(), Dtype(0), out_.mutable_cpu_data());
-  caffe_set(out_.count(2), Dtype(1), out_.mutable_cpu_data());
+  // caffe_set(out_.count(2), Dtype(1), out_.mutable_cpu_data());
 }
 
 template <typename Dtype>
@@ -65,10 +66,12 @@ void ROIPatchReconstructionLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>&
   // for (int i = 0; i < num_; ++i) {
   //   caffe_set(top[0]->count(2), Dtype(1), top_data + top[0]->offset(i));
   // }
-  caffe_set(out_.count(), Dtype(0), out_.mutable_cpu_data());
-  caffe_set(out_.count(2), Dtype(1), out_.mutable_cpu_data());
   for (int i = 0; i < num_; ++i) {
-    // copy 1 batch data to in_
+    // init in_ and out_
+    caffe_set(in_.count(), Dtype(0), in_.mutable_cpu_data());
+    caffe_set(out_.count(), Dtype(0), out_.mutable_cpu_data());
+    // caffe_set(out_.count(2), Dtype(1), out_.mutable_cpu_data());
+    // copy one batch bottom_data to in_
     caffe_copy(in_.count(), bottom_data, in_.mutable_cpu_data());
     // obtain ROI
     // int roi_level = static_cast<int>(bottom_rois[0]);
@@ -85,18 +88,18 @@ void ROIPatchReconstructionLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>&
       roi_height, roi_width, height_out_, width_out_);
     // copy out_ to top_data
     caffe_copy(out_.count(), out_.cpu_data(), top_data);
-
+    // next batch
     bottom_data += bottom[0]->count(1);
     bottom_rois += bottom[1]->count(1);
     top_data += top[0]->count(1);
   }
-  
+
   // int roi_level = int(bottom_rois[0]);
   // int x1 = static_cast<int>(bottom_rois[1]);
   // int y1 = static_cast<int>(bottom_rois[2]);
   // int roi_width = static_cast<int>(bottom_rois[3]) - x1 + 1;
   // int roi_height = static_cast<int>(bottom_rois[4]) - y1 + 1;
-  
+
   // caffe_cpu_interp2<Dtype, false>(num_ * channels_,
   //   bottom[0]->cpu_data(), 0, 0,
   //   height_in_, width_in_, height_in_, width_in_,
@@ -110,9 +113,52 @@ void ROIPatchReconstructionLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>&
   //     height_out_, width_out_, height_out_, width_out_);
 }
 
+template <typename Dtype>
+void ROIPatchReconstructionLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
+    const vector<bool>& propagate_down, const vector<Blob<Dtype>*>& bottom) {
+  if (!propagate_down[0]) { return; }
+  caffe_set(bottom[0]->count(), Dtype(0), bottom[0]->mutable_cpu_diff());
+  // caffe_cpu_interp2_backward<Dtype, false>(num_ * channels_,
+  //   bottom[0]->mutable_cpu_diff(), -pad_beg_, -pad_beg_,
+  //   height_in_eff_, width_in_eff_, height_in_, width_in_,
+  //   top[0]->cpu_diff(), 0, 0,
+  //   height_out_, width_out_, height_out_, width_out_);
+  const Dtype* bottom_rois = bottom[1]->cpu_data();
+  const Dtype* top_diff = top[0]->cpu_diff();
+  Dtype* bottom_diff = bottom[0]->mutable_cpu_diff();
+  for (int i = 0; i < num_; ++i) {
+    // init in_ and out_
+    caffe_set(in_.count(), Dtype(0), in_.mutable_cpu_data());
+    caffe_set(out_.count(), Dtype(0), out_.mutable_cpu_data());
+    // copy one batch top_diff to out_
+    caffe_copy(out_.count(), top_diff, out_.mutable_cpu_data());
+    // obtain ROI
+    // int roi_level = static_cast<int>(bottom_rois[0]);
+    int x1 = static_cast<int>(bottom_rois[1]);
+    int y1 = static_cast<int>(bottom_rois[2]);
+    int roi_width = static_cast<int>(bottom_rois[3]) - x1 + 1;
+    int roi_height = static_cast<int>(bottom_rois[4]) - y1 + 1;
+    caffe_cpu_interp2_backward<Dtype, false>(1 * channels_,
+      in_.mutable_cpu_data(), 0, 0,
+      height_in_, width_in_, height_in_, width_in_,
+      out_.cpu_data(), x1, y1,
+      roi_height, roi_width, height_out_, width_out_);
+    // copy in_ to bottom_diff
+    caffe_copy(in_.count(), in_.cpu_data(), bottom_diff);
+
+    bottom_rois += bottom[1]->count(1);
+    top_diff += top[0]->count(1);
+    bottom_diff += bottom[0]->count(1);
+  }
+}
+
 #ifdef CPU_ONLY
-STUB_GPU_FORWARD(ROIPatchReconstructionLayer, Forward);
+STUB_GPU(ROIPatchReconstructionLayer);
 #endif
+
+// #ifdef CPU_ONLY
+// STUB_GPU_FORWARD(ROIPatchReconstructionLayer, Forward);
+// #endif
 
 INSTANTIATE_CLASS(ROIPatchReconstructionLayer);
 REGISTER_LAYER_CLASS(ROIPatchReconstruction);

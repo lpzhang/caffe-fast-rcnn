@@ -12,7 +12,7 @@ namespace caffe {
 
 /**
  * @brief Changes the spatial resolution by bi-linear interpolation.
- *        The target size is specified in terms of pixels. 
+ *        The target size is specified in terms of pixels.
  *        The start and end pixels of the input are mapped to the start
  *        and end pixels of the output.
  */
@@ -35,13 +35,13 @@ class ROIPatchReconstructionLayer : public Layer<Dtype> {
  protected:
   virtual void Forward_cpu(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top);
-  // virtual void Forward_gpu(const vector<Blob<Dtype>*>& bottom,
-  //     const vector<Blob<Dtype>*>& top);
-  /// @brief Not implemented (non-differentiable function)
+  virtual void Forward_gpu(const vector<Blob<Dtype>*>& bottom,
+      const vector<Blob<Dtype>*>& top);
   virtual void Backward_cpu(const vector<Blob<Dtype>*>& top,
-      const vector<bool>& propagate_down, const vector<Blob<Dtype>*>& bottom) {
-    NOT_IMPLEMENTED;
-  }
+      const vector<bool>& propagate_down, const vector<Blob<Dtype>*>& bottom);
+  virtual void Backward_gpu(const vector<Blob<Dtype>*>& top,
+      const vector<bool>& propagate_down, const vector<Blob<Dtype>*>& bottom);
+
 
   int num_;
   int channels_;
@@ -50,8 +50,8 @@ class ROIPatchReconstructionLayer : public Layer<Dtype> {
   int height_out_;
   int width_out_;
 
-  Blob<Dtype> in_;  // cached for in_
-  Blob<Dtype> out_;  // cached for out_
+  Blob<Dtype> in_;  // cached for each batch bottom data or diff
+  Blob<Dtype> out_;  // cached for each batch top data or diff
 };
 
 }  // namespace caffe

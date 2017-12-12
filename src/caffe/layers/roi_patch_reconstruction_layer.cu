@@ -10,12 +10,13 @@ template <typename Dtype>
 void ROIPatchReconstructionLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
     const vector<Blob<Dtype>*>& top) {
   const Dtype* bottom_data = bottom[0]->gpu_data();
-  const Dtype* bottom_rois = bottom[1]->gpu_data();
+  const Dtype* bottom_rois = bottom[1]->cpu_data();
   Dtype* top_data = top[0]->mutable_gpu_data();
   for (int i = 0; i < num_; ++i) {
     // init in_ and out_
     caffe_gpu_set(in_.count(), Dtype(0), in_.mutable_gpu_data());
     caffe_gpu_set(out_.count(), Dtype(0), out_.mutable_gpu_data());
+    caffe_gpu_set(out_.count(2), Dtype(1), out_.mutable_gpu_data());
     // copy one batch bottom_data to in_
     caffe_copy(in_.count(), bottom_data, in_.mutable_gpu_data());
     // obtain ROI
@@ -24,8 +25,8 @@ void ROIPatchReconstructionLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>&
     int y1 = static_cast<int>(bottom_rois[2]);
     int roi_width = static_cast<int>(bottom_rois[3]) - x1 + 1;
     int roi_height = static_cast<int>(bottom_rois[4]) - y1 + 1;
-    LOG(INFO) << x1 << y1 << roi_width << roi_height;
-    LOG(INFO) << height_in_ << width_in_ << height_out_ << width_out_;
+    // LOG(INFO) << x1 << y1 << roi_width << roi_height;
+    // LOG(INFO) << height_in_ << width_in_ << height_out_ << width_out_;
     caffe_gpu_interp2<Dtype, false>(1 * channels_,
       in_.gpu_data(), 0, 0,
       height_in_, width_in_, height_in_, width_in_,
@@ -50,7 +51,7 @@ void ROIPatchReconstructionLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>
     const vector<bool>& propagate_down, const vector<Blob<Dtype>*>& bottom) {
   if (!propagate_down[0]) { return; }
   caffe_gpu_set(bottom[0]->count(), Dtype(0), bottom[0]->mutable_gpu_diff());
-  const Dtype* bottom_rois = bottom[1]->gpu_data();
+  const Dtype* bottom_rois = bottom[1]->cpu_data();
   const Dtype* top_diff = top[0]->gpu_diff();
   Dtype* bottom_diff = bottom[0]->mutable_gpu_diff();
   for (int i = 0; i < num_; ++i) {

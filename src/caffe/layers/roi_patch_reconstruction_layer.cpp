@@ -51,8 +51,10 @@ void ROIPatchReconstructionLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bot
   //   caffe_set(top[0]->count(2), Dtype(1), top_data + top[0]->offset(i));
   // }
   caffe_set(in_.count(), Dtype(0), in_.mutable_cpu_data());
+  // Init out_ to 0
+  // and Set background(channel 0) have prob 1.0 for bottom data is the softmax ouput
   caffe_set(out_.count(), Dtype(0), out_.mutable_cpu_data());
-  // caffe_set(out_.count(2), Dtype(1), out_.mutable_cpu_data());
+  caffe_set(out_.count(2), Dtype(1), out_.mutable_cpu_data());
 }
 
 template <typename Dtype>
@@ -70,7 +72,7 @@ void ROIPatchReconstructionLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>&
     // init in_ and out_
     caffe_set(in_.count(), Dtype(0), in_.mutable_cpu_data());
     caffe_set(out_.count(), Dtype(0), out_.mutable_cpu_data());
-    // caffe_set(out_.count(2), Dtype(1), out_.mutable_cpu_data());
+    caffe_set(out_.count(2), Dtype(1), out_.mutable_cpu_data());
     // copy one batch bottom_data to in_
     caffe_copy(in_.count(), bottom_data, in_.mutable_cpu_data());
     // obtain ROI

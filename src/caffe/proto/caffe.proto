@@ -422,7 +422,8 @@ message LayerParameter {
   optional WeightedSoftmaxWithLossParameter weighted_softmax_loss_param = 780;
   optional FocalSoftmaxLossParameter focal_softmax_loss_param = 781;
   optional ROICoordinateV2Parameter roi_coordinate_v2_param = 782;
-// ZLP END to 782//
+  optional ArrangeParameter Arrange_param = 783;
+// ZLP END to 783//
 }
 
 // Message that stores parameters used to apply transformation
@@ -1571,5 +1572,15 @@ message ROICoordinateV2Parameter {
   optional float threshold = 2; 
   repeated float point = 3; // point for split interval
   repeated float scale = 4; // Strictly positive values
+}
+
+// Message that stores parameters used by ArrangeLayer
+message ArrangeParameter {
+  required int32 stride = 1; // The stride; defaults to 1
+  enum ArrangementMode {
+    UNION = 0;
+    SPLIT = 1;
+  }
+  optional ArrangementMode arrangement = 2 [default = UNION];
 }
 // ZLP END//

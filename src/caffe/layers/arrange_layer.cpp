@@ -99,7 +99,7 @@ void ArrangeLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
               int bottom_index = bottom_num_offset + bottom_channel_offset + bottom_height_offset + w;
               int top_index = top_num_offset + top_channel_offset + top_height_offset + region_w;
 
-              top_data[top_index] = bottom_data[bottom_index]
+              top_data[top_index] = bottom_data[bottom_index];
             }
           }
         }
@@ -139,7 +139,7 @@ void ArrangeLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
               int bottom_index = bottom_num_offset + bottom_channel_offset + bottom_height_offset + w;
               int top_index = top_num_offset + top_channel_offset + top_height_offset + region_w + region_offset;
 
-              top_data[top_index] = bottom_data[bottom_index]
+              top_data[top_index] = bottom_data[bottom_index];
             }
           }
         }
@@ -200,7 +200,7 @@ void ArrangeLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
               int bottom_index = bottom_num_offset + bottom_channel_offset + bottom_height_offset + w;
               int top_index = top_num_offset + top_channel_offset + top_height_offset + region_w;
 
-              bottom_diff[bottom_index] = top_diff[top_index]
+              bottom_diff[bottom_index] = top_diff[top_index];
             }
           }
         }
@@ -240,7 +240,7 @@ void ArrangeLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
               int bottom_index = bottom_num_offset + bottom_channel_offset + bottom_height_offset + w;
               int top_index = top_num_offset + top_channel_offset + top_height_offset + region_w + region_offset;
 
-              bottom_diff[bottom_index] = top_diff[top_index]
+              bottom_diff[bottom_index] = top_diff[top_index];
             }
           }
         }

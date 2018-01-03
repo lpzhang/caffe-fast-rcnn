@@ -46,7 +46,7 @@ class ArrangeLayer : public Layer<Dtype> {
   int region_width_;
 
   int stride_;
-  ArrangeParameter_ArrangementMode = arrangement_;
+  ArrangeParameter_ArrangementMode arrangement_;
 };
 
 }  // namespace caffe

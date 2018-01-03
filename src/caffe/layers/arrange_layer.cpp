@@ -106,40 +106,42 @@ void ArrangeLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
       }
       break;
     case ArrangeParameter_ArrangementMode_SPLIT:
-      const int region_dist = channels_ * top_spatial_dim;
+      {
+        const int region_dist = channels_ * top_spatial_dim;
 
-      for (int n = 0; n < num_; ++n) {
-        int bottom_num_offset = n * bottom_dim;
-        int top_num_offset = n * top_dim;
+        for (int n = 0; n < num_; ++n) {
+          int bottom_num_offset = n * bottom_dim;
+          int top_num_offset = n * top_dim;
 
-        for (int c = 0; c < channels_; ++c) {
-          int bottom_channel_offset = c * bottom_spatial_dim;
-          int top_channel_offset = c * top_spatial_dim;
+          for (int c = 0; c < channels_; ++c) {
+            int bottom_channel_offset = c * bottom_spatial_dim;
+            int top_channel_offset = c * top_spatial_dim;
 
-          for (int h = 0; h < height_; ++h) {
-            int region_h = h / stride_;
-            int region_index_h = h % stride_;
+            for (int h = 0; h < height_; ++h) {
+              int region_h = h / stride_;
+              int region_index_h = h % stride_;
 
-            int bottom_height_offset = h * width_;
-            // int top_height_offset = region_h * top[0]->width();
-            int top_height_offset = region_h * region_width_;
+              int bottom_height_offset = h * width_;
+              // int top_height_offset = region_h * top[0]->width();
+              int top_height_offset = region_h * region_width_;
 
-            for (int w = 0; w < width_; ++w) {
-              int region_w = w / stride_;
-              int region_index_w = w % stride_;
+              for (int w = 0; w < width_; ++w) {
+                int region_w = w / stride_;
+                int region_index_w = w % stride_;
 
-              int region_index = region_index_h * stride_ + region_index_w;
-              int region_offset = region_index * region_dist;
-              /***
-              index = ((n * C + c) * H + h) * W + w
-                    = n * C * H * W + c * H * W + h * W + w;
-              ***/
-              // int bottom_index = n * bottom_dim + c * bottom_spatial_dim + h * width_ + w;
-              // int top_index = n * top_dim + region_index * region_dist + c * top_spatial_dim + region_h * region_width_ + region_w;
-              int bottom_index = bottom_num_offset + bottom_channel_offset + bottom_height_offset + w;
-              int top_index = top_num_offset + top_channel_offset + top_height_offset + region_w + region_offset;
+                int region_index = region_index_h * stride_ + region_index_w;
+                int region_offset = region_index * region_dist;
+                /***
+                index = ((n * C + c) * H + h) * W + w
+                      = n * C * H * W + c * H * W + h * W + w;
+                ***/
+                // int bottom_index = n * bottom_dim + c * bottom_spatial_dim + h * width_ + w;
+                // int top_index = n * top_dim + region_index * region_dist + c * top_spatial_dim + region_h * region_width_ + region_w;
+                int bottom_index = bottom_num_offset + bottom_channel_offset + bottom_height_offset + w;
+                int top_index = top_num_offset + top_channel_offset + top_height_offset + region_w + region_offset;
 
-              top_data[top_index] = bottom_data[bottom_index];
+                top_data[top_index] = bottom_data[bottom_index];
+              }
             }
           }
         }
@@ -207,40 +209,42 @@ void ArrangeLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
       }
       break;
     case ArrangeParameter_ArrangementMode_SPLIT:
-      const int region_dist = channels_ * top_spatial_dim;
+      {
+        const int region_dist = channels_ * top_spatial_dim;
 
-      for (int n = 0; n < num_; ++n) {
-        int bottom_num_offset = n * bottom_dim;
-        int top_num_offset = n * top_dim;
+        for (int n = 0; n < num_; ++n) {
+          int bottom_num_offset = n * bottom_dim;
+          int top_num_offset = n * top_dim;
 
-        for (int c = 0; c < channels_; ++c) {
-          int bottom_channel_offset = c * bottom_spatial_dim;
-          int top_channel_offset = c * top_spatial_dim;
+          for (int c = 0; c < channels_; ++c) {
+            int bottom_channel_offset = c * bottom_spatial_dim;
+            int top_channel_offset = c * top_spatial_dim;
 
-          for (int h = 0; h < height_; ++h) {
-            int region_h = h / stride_;
-            int region_index_h = h % stride_;
+            for (int h = 0; h < height_; ++h) {
+              int region_h = h / stride_;
+              int region_index_h = h % stride_;
 
-            int bottom_height_offset = h * width_;
-            // int top_height_offset = region_h * top[0]->width();
-            int top_height_offset = region_h * region_width_;
+              int bottom_height_offset = h * width_;
+              // int top_height_offset = region_h * top[0]->width();
+              int top_height_offset = region_h * region_width_;
 
-            for (int w = 0; w < width_; ++w) {
-              int region_w = w / stride_;
-              int region_index_w = w % stride_;
+              for (int w = 0; w < width_; ++w) {
+                int region_w = w / stride_;
+                int region_index_w = w % stride_;
 
-              int region_index = region_index_h * stride_ + region_index_w;
-              int region_offset = region_index * region_dist;
-              /***
-              index = ((n * C + c) * H + h) * W + w
-                    = n * C * H * W + c * H * W + h * W + w;
-              ***/
-              // int bottom_index = n * bottom_dim + c * bottom_spatial_dim + h * width_ + w;
-              // int top_index = n * top_dim + region_index * region_dist + c * top_spatial_dim + region_h * region_width_ + region_w;
-              int bottom_index = bottom_num_offset + bottom_channel_offset + bottom_height_offset + w;
-              int top_index = top_num_offset + top_channel_offset + top_height_offset + region_w + region_offset;
+                int region_index = region_index_h * stride_ + region_index_w;
+                int region_offset = region_index * region_dist;
+                /***
+                index = ((n * C + c) * H + h) * W + w
+                      = n * C * H * W + c * H * W + h * W + w;
+                ***/
+                // int bottom_index = n * bottom_dim + c * bottom_spatial_dim + h * width_ + w;
+                // int top_index = n * top_dim + region_index * region_dist + c * top_spatial_dim + region_h * region_width_ + region_w;
+                int bottom_index = bottom_num_offset + bottom_channel_offset + bottom_height_offset + w;
+                int top_index = top_num_offset + top_channel_offset + top_height_offset + region_w + region_offset;
 
-              bottom_diff[bottom_index] = top_diff[top_index];
+                bottom_diff[bottom_index] = top_diff[top_index];
+              }
             }
           }
         }

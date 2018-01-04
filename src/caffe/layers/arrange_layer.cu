@@ -41,7 +41,10 @@ __global__ void SplitModeForward(const int nthreads, const Dtype* const bottom_d
     const int n = index / width / height / channels;
     int region_index_h = h % stride;
     int region_index_w = w % stride;
+    int region_h = h / stride;
+    int region_w = w / stride;
     int region_index = region_index_h * stride + region_index_w;
+
     // int region_offset = region_index * region_dist;
     Dtype* const top_slice = top_data + n * top_dim + region_index * region_dist + c * top_spatial_dim;
     top_slice[region_h * region_width + region_w] = bottom_data[index];
@@ -126,6 +129,8 @@ __global__ void SplitModeBackward(const int nthreads, const Dtype* const top_dif
 
     int region_index_h = h % stride;
     int region_index_w = w % stride;
+    int region_h = h / stride;
+    int region_w = w / stride;
     int region_index = region_index_h * stride + region_index_w;
 
     const Dtype* const top_slice = top_diff + n * top_dim + region_index * region_dist + c * top_spatial_dim;

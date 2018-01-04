@@ -60,10 +60,10 @@ void ArrangeLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
   // caffe_set(top[0]->count(), Dtype(-FLT_MAX), top_data);
   caffe_set(top[0]->count(), Dtype(0), top_data);
 
-  const int bottom_dim = bottom[0]->count(1);
-  const int bottom_spatial_dim = bottom[0]->count(2);
-  const int top_dim = top[0]->count(1);
-  const int top_spatial_dim = top[0]->count(2);
+  int bottom_dim = bottom[0]->count(1);
+  int bottom_spatial_dim = bottom[0]->count(2);
+  int top_dim = top[0]->count(1);
+  int top_spatial_dim = top[0]->count(2);
   /***
   Memory Copy
   ***/
@@ -107,7 +107,7 @@ void ArrangeLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
       break;
     case ArrangeParameter_ArrangementMode_SPLIT:
       {
-        const int region_dist = channels_ * top_spatial_dim;
+        int region_dist = channels_ * top_spatial_dim;
 
         for (int n = 0; n < num_; ++n) {
           int bottom_num_offset = n * bottom_dim;
@@ -163,10 +163,10 @@ void ArrangeLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
   const Dtype* top_diff = top[0]->cpu_diff();
   caffe_set(bottom[0]->count(), Dtype(0), bottom_diff);
 
-  const int bottom_dim = bottom[0]->count(1);
-  const int bottom_spatial_dim = bottom[0]->count(2);
-  const int top_dim = top[0]->count(1);
-  const int top_spatial_dim = top[0]->count(2);
+  int bottom_dim = bottom[0]->count(1);
+  int bottom_spatial_dim = bottom[0]->count(2);
+  int top_dim = top[0]->count(1);
+  int top_spatial_dim = top[0]->count(2);
   /***
   Memory Copy
   ***/
@@ -210,7 +210,7 @@ void ArrangeLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
       break;
     case ArrangeParameter_ArrangementMode_SPLIT:
       {
-        const int region_dist = channels_ * top_spatial_dim;
+        int region_dist = channels_ * top_spatial_dim;
 
         for (int n = 0; n < num_; ++n) {
           int bottom_num_offset = n * bottom_dim;

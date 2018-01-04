@@ -10,8 +10,8 @@ namespace caffe {
 template <typename Dtype>
 __global__ void UnionModeForward(const int nthreads, const Dtype* const bottom_data,
     const int num, const int channels, const int height, const int width,
-    const int region_height, const int region_width,
-    const int top_dim, const int top_spatial_dim, const int stride,
+    const int region_height, const int region_width, const int stride,
+    const int top_height, const int top_width, const int top_dim, const int top_spatial_dim,
     Dtype* const top_data) {
   CUDA_KERNEL_LOOP(index, nthreads) {
     const int w = index % width;
@@ -24,15 +24,15 @@ __global__ void UnionModeForward(const int nthreads, const Dtype* const bottom_d
     int region_w = w / stride + region_index_w * region_width;
 
     Dtype* const top_slice = top_data + n * top_dim + c * top_spatial_dim;
-    top_slice[region_h * region_width + region_w] = bottom_data[index];
+    top_slice[region_h * top_width + region_w] = bottom_data[index];
   }
 }
 
 template <typename Dtype>
 __global__ void SplitModeForward(const int nthreads, const Dtype* const bottom_data,
     const int num, const int channels, const int height, const int width,
-    const int region_height, const int region_width,
-    const int top_dim, const int top_spatial_dim, const int stride, const int region_dist,
+    const int region_height, const int region_width, const int stride, const int region_dist,
+    const int top_height, const int top_width, const int top_dim, const int top_spatial_dim,
     Dtype* const top_data) {
   CUDA_KERNEL_LOOP(index, nthreads) {
     const int w = index % width;
@@ -47,7 +47,7 @@ __global__ void SplitModeForward(const int nthreads, const Dtype* const bottom_d
 
     // int region_offset = region_index * region_dist;
     Dtype* const top_slice = top_data + n * top_dim + region_index * region_dist + c * top_spatial_dim;
-    top_slice[region_h * region_width + region_w] = bottom_data[index];
+    top_slice[region_h * top_width + region_w] = bottom_data[index];
   }
 }
 
@@ -62,6 +62,8 @@ void ArrangeLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
   const int top_dim = top[0]->count(1);
   const int top_spatial_dim = top[0]->count(2);
   const int region_dist = channels_ * top_spatial_dim;
+  const int top_height = top[0]->height();
+  const int top_width = top[0]->width();
  
   switch (arrangement_) {
   case ArrangeParameter_ArrangementMode_UNION:
@@ -69,8 +71,8 @@ void ArrangeLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
     UnionModeForward<Dtype><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
         count, bottom_data,
         bottom[0]->num(), channels_, height_, width_,
-        region_height_, region_width_,
-        top_dim, top_spatial_dim, stride_,
+        region_height_, region_width_, stride_,
+        top_height, top_width, top_dim, top_spatial_dim,
         top_data);
     break;
   case ArrangeParameter_ArrangementMode_SPLIT:
@@ -78,8 +80,8 @@ void ArrangeLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
     SplitModeForward<Dtype><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
         count, bottom_data,
         bottom[0]->num(), channels_, height_, width_,
-        region_height_, region_width_,
-        top_dim, top_spatial_dim, stride_, region_dist,
+        region_height_, region_width_, stride_, region_dist,
+        top_height, top_width, top_dim, top_spatial_dim,
         top_data);
     break;
   default:
@@ -92,8 +94,8 @@ void ArrangeLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
 template <typename Dtype>
 __global__ void UnionModeBackward(const int nthreads, const Dtype* const top_diff,
     const int num, const int channels, const int height, const int width,
-    const int region_height, const int region_width,
-    const int top_dim, const int top_spatial_dim, const int stride,
+    const int region_height, const int region_width, const int stride,
+    const int top_height, const int top_width, const int top_dim, const int top_spatial_dim,
     Dtype* const bottom_diff) {
   CUDA_KERNEL_LOOP(index, nthreads) {
     // find out the local index
@@ -109,15 +111,15 @@ __global__ void UnionModeBackward(const int nthreads, const Dtype* const top_dif
     int region_w = w / stride + region_index_w * region_width;
 
     const Dtype* const top_slice = top_diff + n * top_dim + c * top_spatial_dim;
-    bottom_diff[index] = top_slice[region_h * region_width + region_w];
+    bottom_diff[index] = top_slice[region_h * top_width + region_w];
   }
 }
 
 template <typename Dtype>
 __global__ void SplitModeBackward(const int nthreads, const Dtype* const top_diff,
     const int num, const int channels, const int height, const int width,
-    const int region_height, const int region_width,
-    const int top_dim, const int top_spatial_dim, const int stride, const int region_dist,
+    const int region_height, const int region_width, const int stride, const int region_dist,
+    const int top_height, const int top_width, const int top_dim, const int top_spatial_dim,
     Dtype* const bottom_diff) {
   CUDA_KERNEL_LOOP(index, nthreads) {
     // find out the local index
@@ -134,7 +136,7 @@ __global__ void SplitModeBackward(const int nthreads, const Dtype* const top_dif
     int region_w = w / stride;
     
     const Dtype* const top_slice = top_diff + n * top_dim + region_index * region_dist + c * top_spatial_dim;
-    bottom_diff[index] = top_slice[region_h * region_width + region_w];
+    bottom_diff[index] = top_slice[region_h * top_width + region_w];
   }
 }
 
@@ -152,6 +154,8 @@ void ArrangeLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
   const int top_dim = top[0]->count(1);
   const int top_spatial_dim = top[0]->count(2);
   const int region_dist = channels_ * top_spatial_dim;
+  const int top_height = top[0]->height();
+  const int top_width = top[0]->width();
   
   switch (arrangement_) {
   case ArrangeParameter_ArrangementMode_UNION:
@@ -159,8 +163,8 @@ void ArrangeLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
     UnionModeBackward<Dtype><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
         count, top_diff,
         top[0]->num(), channels_, height_, width_,
-        region_height_, region_width_,
-        top_dim, top_spatial_dim, stride_,
+        region_height_, region_width_, stride_,
+        top_height, top_width, top_dim, top_spatial_dim,
         bottom_diff);
     break;
   case ArrangeParameter_ArrangementMode_SPLIT:
@@ -168,8 +172,8 @@ void ArrangeLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
     SplitModeBackward<Dtype><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
         count, top_diff,
         top[0]->num(), channels_, height_, width_,
-        region_height_, region_width_,
-        top_dim, top_spatial_dim, stride_, region_dist,
+        region_height_, region_width_, stride_, region_dist,
+        top_height, top_width, top_dim, top_spatial_dim,
         bottom_diff);
     break;
   default:

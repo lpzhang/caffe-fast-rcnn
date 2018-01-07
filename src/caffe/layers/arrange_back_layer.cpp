@@ -83,7 +83,7 @@ void ArrangeBackLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
             for (int w = 0; w < width_; ++w) {
               int region_index_w = w / region_width_;
               int top_w = (w - region_index_w * region_width_) * stride_ +  region_index_w;
-              top_data[top_h * top_width + top_w] = bottom_data[h * width_ + w]
+              top_data[top_h * top_width + top_w] = bottom_data[h * width_ + w];
             }
           }
           // compute offset

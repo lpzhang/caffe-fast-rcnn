@@ -189,9 +189,9 @@ void ArrangeBackLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
   }
 }
 
-#ifdef CPU_ONLY
-STUB_GPU(ArrangeBackLayer);
-#endif
+// #ifdef CPU_ONLY
+// STUB_GPU(ArrangeBackLayer);
+// #endif
 
 INSTANTIATE_CLASS(ArrangeBackLayer);
 REGISTER_LAYER_CLASS(ArrangeBack);

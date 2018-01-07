@@ -8,7 +8,7 @@
 namespace caffe {
 
 template <typename Dtype>
-__global__ void UnionModeBackForward(const int nthreads, const Dtype* const bottom_data,
+__global__ void UnionBackModeForward(const int nthreads, const Dtype* const bottom_data,
     const int num, const int channels, const int height, const int width,
     const int region_height, const int region_width, const int stride,
     const int top_channels, const int top_height, const int top_width, const int top_dim, const int top_spatial_dim,
@@ -30,7 +30,7 @@ __global__ void UnionModeBackForward(const int nthreads, const Dtype* const bott
 }
 
 template <typename Dtype>
-__global__ void SplitModeBackForward(const int nthreads, const Dtype* const bottom_data,
+__global__ void SplitBackModeForward(const int nthreads, const Dtype* const bottom_data,
     const int num, const int channels, const int height, const int width,
     const int region_height, const int region_width, const int stride,
     const int top_channels, const int top_height, const int top_width, const int top_dim, const int top_spatial_dim,
@@ -71,7 +71,7 @@ void ArrangeBackLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
   switch (arrangement_) {
   case ArrangeParameter_ArrangementMode_UNION:
     // NOLINT_NEXT_LINE(whitespace/operators)
-    UnionModeBackForward<Dtype><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
+    UnionBackModeForward<Dtype><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
         count, bottom_data,
         bottom[0]->num(), channels_, height_, width_,
         region_height_, region_width_, stride_,
@@ -80,7 +80,7 @@ void ArrangeBackLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
     break;
   case ArrangeParameter_ArrangementMode_SPLIT:
     // NOLINT_NEXT_LINE(whitespace/operators)
-    SplitModeBackForward<Dtype><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
+    SplitBackModeForward<Dtype><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
         count, bottom_data,
         bottom[0]->num(), channels_, height_, width_,
         region_height_, region_width_, stride_,
@@ -94,7 +94,7 @@ void ArrangeBackLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
 }
 
 template <typename Dtype>
-__global__ void UnionModeBackBackward(const int nthreads, const Dtype* const top_diff,
+__global__ void UnionBackModeBackward(const int nthreads, const Dtype* const top_diff,
     const int num, const int channels, const int height, const int width,
     const int region_height, const int region_width, const int stride,
     const int top_channels, const int top_height, const int top_width, const int top_dim, const int top_spatial_dim,
@@ -118,7 +118,7 @@ __global__ void UnionModeBackBackward(const int nthreads, const Dtype* const top
 }
 
 template <typename Dtype>
-__global__ void SplitModeBackBackward(const int nthreads, const Dtype* const top_diff,
+__global__ void SplitBackModeBackward(const int nthreads, const Dtype* const top_diff,
     const int num, const int channels, const int height, const int width,
     const int region_height, const int region_width, const int stride,
     const int top_channels, const int top_height, const int top_width, const int top_dim, const int top_spatial_dim,
@@ -164,7 +164,7 @@ void ArrangeBackLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
   switch (arrangement_) {
   case ArrangeParameter_ArrangementMode_UNION:
     // NOLINT_NEXT_LINE(whitespace/operators)
-    UnionModeBackBackward<Dtype><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
+    UnionBackModeBackward<Dtype><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
         count, top_diff,
         top[0]->num(), channels_, height_, width_,
         region_height_, region_width_, stride_,
@@ -173,7 +173,7 @@ void ArrangeBackLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
     break;
   case ArrangeParameter_ArrangementMode_SPLIT:
     // NOLINT_NEXT_LINE(whitespace/operators)
-    SplitModeBackBackward<Dtype><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
+    SplitBackModeBackward<Dtype><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
         count, top_diff,
         top[0]->num(), channels_, height_, width_,
         region_height_, region_width_, stride_,

@@ -80,7 +80,6 @@ void ArrangeBackLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
     break;
   case ArrangeParameter_ArrangementMode_SPLIT:
     // NOLINT_NEXT_LINE(whitespace/operators)
-    LOG(FATAL) << "SplitModeForward.";
     SplitModeBackForward<Dtype><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
         count, bottom_data,
         bottom[0]->num(), channels_, height_, width_,

@@ -423,7 +423,8 @@ message LayerParameter {
   optional FocalSoftmaxLossParameter focal_softmax_loss_param = 781;
   optional ROICoordinateV2Parameter roi_coordinate_v2_param = 782;
   optional ArrangeParameter arrange_param = 783;
-// ZLP END to 783//
+  optional PoolingNDParameter pooling_nd_param = 784;
+// ZLP END to 784//
 }
 
 // Message that stores parameters used to apply transformation
@@ -1582,5 +1583,42 @@ message ArrangeParameter {
     SPLIT = 1;
   }
   optional ArrangementMode arrangement = 2 [default = UNION];
+}
+
+// Message that stores parameters used by PoolingNDLayer
+message PoolingNDParameter {
+  enum PoolMethod {
+    MAX = 0;
+    AVE = 1;
+    STOCHASTIC = 2;
+  }
+  optional PoolMethod pool = 1 [default = MAX]; // The pooling method
+  // Pad, kernel size, and stride are all given as a single value for equal
+  // dimensions in all spatial dimensions, or once per spatial dimension.
+  repeated uint32 pad = 2; // The padding size defaults to 0
+  repeated uint32 kernel_size = 3; // The kernel size (square)
+  repeated uint32 stride = 4; // defaults to 1
+  
+  // For 2D pooling only, the *_h and *_w versions may also be used to
+  // specify both spatial dimensions.
+  optional uint32 pad_h = 5 [default = 0]; // The padding height (2D only)
+  optional uint32 pad_w = 6 [default = 0]; // The padding width (2D only)
+  optional uint32 kernel_h = 7; // The kernel height (2D only)
+  optional uint32 kernel_w = 8; // The kernel width (2D only)
+  optional uint32 stride_h = 9; // The stride height (2D only)
+  optional uint32 stride_w = 10; // The stride width (2D only)
+  enum Engine {
+    DEFAULT = 0;
+    CAFFE = 1;
+    CUDNN = 2;
+  }
+  optional Engine engine = 11 [default = DEFAULT];
+  // If global_pooling then it will pool over the size of the bottom by doing
+  // kernel_h = bottom->height and kernel_w = bottom->width
+  optional bool global_pooling = 12 [default = false];
+  // The axis to interpret as "channels" when performing pooling.
+  // Preceding dimensions are treated as independent inputs;
+  // succeeding dimensions are treated as "spatial".
+  optional int32 axis = 13 [default = 1];
 }
 // ZLP END//

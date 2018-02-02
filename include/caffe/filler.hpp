@@ -147,8 +147,12 @@ class XavierFiller : public Filler<Dtype> {
       : Filler<Dtype>(param) {}
   virtual void Fill(Blob<Dtype>* blob) {
     CHECK(blob->count());
-    int fan_in = blob->count() / blob->num();
-    int fan_out = blob->count() / blob->channels();
+    //int fan_in = blob->count() / blob->num();
+    //int fan_out = blob->count() / blob->channels();
+// Added by @ZLP
+    int fan_in = blob->count() / blob->shape(0);
+    int fan_out = blob->count() / blob->shape(1);
+// Added by @ZLP
     Dtype n = fan_in;  // default to fan_in
     if (this->filler_param_.variance_norm() ==
         FillerParameter_VarianceNorm_AVERAGE) {
@@ -189,8 +193,12 @@ class MSRAFiller : public Filler<Dtype> {
       : Filler<Dtype>(param) {}
   virtual void Fill(Blob<Dtype>* blob) {
     CHECK(blob->count());
-    int fan_in = blob->count() / blob->num();
-    int fan_out = blob->count() / blob->channels();
+    //int fan_in = blob->count() / blob->num();
+    //int fan_out = blob->count() / blob->channels();
+// Added by @ZLP
+    int fan_in = blob->count() / blob->shape(0);
+    int fan_out = blob->count() / blob->shape(1);
+// Added by @ZLP
     Dtype n = fan_in;  // default to fan_in
     if (this->filler_param_.variance_norm() ==
         FillerParameter_VarianceNorm_AVERAGE) {
@@ -260,6 +268,33 @@ class BilinearFiller : public Filler<Dtype> {
          << "Sparsity not supported by this Filler.";
   }
 };
+/**
+3D Bilinear Filler
+*/
+// Added by @ZLP
+template <typename Dtype>
+class BilinearFiller3D : public Filler<Dtype> {
+ public:
+  explicit BilinearFiller3D(const FillerParameter& param)
+      : Filler<Dtype>(param) {}
+  virtual void Fill(Blob<Dtype>* blob) {
+    CHECK_EQ(blob->num_axes(), 5) << "Blob must be 5 dim.";
+    CHECK_EQ(blob->shape(-1), blob->shape(-2)) << "Filter must be square";
+    CHECK_EQ(blob->shape(-2), blob->shape(-3)) << "Filter must be square";
+    Dtype* data = blob->mutable_cpu_data();
+    int f = ceil(blob->shape(-1) / 2.);
+    float c = (2 * f - 1 - f % 2) / (2. * f);
+    for (int i = 0; i < blob->count(); ++i) {
+      float x = i % blob->shape(-1);
+      float y = (i / blob->shape(-1)) % blob->shape(-2);
+      float z = (i/(blob->shape(-1)*blob->shape(-2))) % blob->shape(-3);
+      data[i] = (1 - fabs(x / f - c)) * (1 - fabs(y / f - c)) * (1 - fabs(z / f - c));
+    }
+    CHECK_EQ(this->filler_param_.sparse(), -1)
+         << "Sparsity not supported by this Filler.";
+  }
+};
+// Added by @ZLP
 
 /**
  * @brief Get a specific filler from the specification given in FillerParameter.
@@ -284,6 +319,8 @@ Filler<Dtype>* GetFiller(const FillerParameter& param) {
     return new MSRAFiller<Dtype>(param);
   } else if (type == "bilinear") {
     return new BilinearFiller<Dtype>(param);
+  } else if (type == "bilinear3d") {
+    return new BilinearFiller3D<Dtype>(param);
   } else {
     CHECK(false) << "Unknown filler name: " << param.type();
   }

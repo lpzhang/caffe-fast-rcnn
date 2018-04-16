@@ -33,7 +33,7 @@ void DeformableConvolutionLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bott
     top[top_id]->Reshape(top_shape);
 
   }
-  
+
   if (reverse_dimensions()) {
     this->conv_out_spatial_dim_ = bottom[0]->count(first_spatial_axis);
   } else {
@@ -65,7 +65,7 @@ void DeformableConvolutionLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bott
     }
   }
   this->col_buffer_.Reshape(this->col_buffer_shape_);
-  
+
   this->input_offset_dim_ = bottom[1]->count(this->channel_axis_);
 
 
@@ -294,6 +294,7 @@ void DeformableConvolutionLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& b
 STUB_GPU(DeformableConvolutionLayer);
 #endif
 INSTANTIATE_CLASS(DeformableConvolutionLayer);
+REGISTER_LAYER_CLASS(DeformableConvolution);
 
 
 

@@ -425,6 +425,7 @@ message LayerParameter {
   optional ArrangeParameter arrange_param = 783;
   optional PoolingNDParameter pooling_nd_param = 784;
   optional DeformableConvolutionParameter deformable_convolution_param = 785;
+  optional MultiStageMeanfieldParameter multi_stage_meanfield_param = 786;
 // ZLP END to 785//
 }
 
@@ -1677,4 +1678,27 @@ message DeformableConvolutionParameter {
   // ignored and the ND implementation will be used.)
   optional bool force_nd_im2col = 17 [default = false];
 }
+
+// Message that stores parameters used by MultiStageMeanfieldLayer
+  message MultiStageMeanfieldParameter {
+    enum Mode {
+      POTTS = 0;
+    }
+    optional Mode compatibility_mode = 1 [default = POTTS];
+    optional float threshold = 2;
+
+    required float theta_alpha = 3 [default = 10.];
+    required float theta_beta = 4 [default = 10.];
+    required float theta_gamma = 5 [default = 10.];
+
+    required uint32 num_iterations = 6 [default = 1];
+    optional float spatial_filter_weight = 7 [default = 1];
+    optional float bilateral_filter_weight = 8 [default = 1];
+
+    optional float forced_spatial_filter_weight = 9;
+    optional float forced_bilateral_filter_weight = 10;
+
+    required float spatial_weight = 11;
+    required float bilateral_weight = 12;
+  }
 // ZLP END//

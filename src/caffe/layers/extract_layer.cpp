@@ -84,10 +84,6 @@ void ExtractLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
   }
 }
 
-#ifdef CPU_ONLY
-STUB_GPU(ExtractLayer);
-#endif
-
 INSTANTIATE_CLASS(ExtractLayer);
 REGISTER_LAYER_CLASS(Extract);
 

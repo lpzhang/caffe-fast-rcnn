@@ -158,10 +158,6 @@ void ROIPatchReconstructionLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>
 STUB_GPU(ROIPatchReconstructionLayer);
 #endif
 
-// #ifdef CPU_ONLY
-// STUB_GPU_FORWARD(ROIPatchReconstructionLayer, Forward);
-// #endif
-
 INSTANTIATE_CLASS(ROIPatchReconstructionLayer);
 REGISTER_LAYER_CLASS(ROIPatchReconstruction);
 

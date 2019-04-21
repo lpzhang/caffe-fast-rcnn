@@ -379,7 +379,8 @@ message LayerParameter {
   optional BatchNormParameter batch_norm_param = 782;
   optional ROIAlignPoolingParameter roi_align_pooling_param = 783;
   optional TileParameter tile_param = 784;
-// ZLP END to 784//
+  optional ArrangeParameter arrange_param = 785;
+// ZLP END to 785//
 }
 
 // Message that stores parameters used to apply transformation
@@ -1473,5 +1474,15 @@ message TileParameter {
 
   // The number of copies (tiles) of the blob to output.
   optional int32 tiles = 2;
+}
+
+// Message that stores parameters used by ArrangeLayer
+message ArrangeParameter {
+  required int32 stride = 1; // The stride; defaults to 1
+  enum ArrangementMode {
+    UNION = 0;
+    SPLIT = 1;
+  }
+  optional ArrangementMode arrangement = 2 [default = UNION];
 }
 // ZLP END//

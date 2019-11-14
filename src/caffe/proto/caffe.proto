@@ -426,7 +426,8 @@ message LayerParameter {
   optional PoolingNDParameter pooling_nd_param = 784;
   optional DeformableConvolutionParameter deformable_convolution_param = 785;
   optional MultiStageMeanfieldParameter multi_stage_meanfield_param = 786;
-// ZLP END to 785//
+  optional ShuffleChannelParameter shuffle_channel_param = 787;
+// ZLP END to 787//
 }
 
 // Message that stores parameters used to apply transformation
@@ -1680,7 +1681,7 @@ message DeformableConvolutionParameter {
 }
 
 // Message that stores parameters used by MultiStageMeanfieldLayer
-  message MultiStageMeanfieldParameter {
+message MultiStageMeanfieldParameter {
     enum Mode {
       POTTS = 0;
     }
@@ -1700,5 +1701,10 @@ message DeformableConvolutionParameter {
 
     required float spatial_weight = 11;
     required float bilateral_weight = 12;
-  }
+}
+
+// Message that stores parameters used by ShuffleChannelLayer
+message ShuffleChannelParameter {
+    optional uint32 group = 1 [default = 1]; // The number of group
+}
 // ZLP END//

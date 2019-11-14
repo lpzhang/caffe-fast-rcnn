@@ -380,7 +380,9 @@ message LayerParameter {
   optional ROIAlignPoolingParameter roi_align_pooling_param = 783;
   optional TileParameter tile_param = 784;
   optional ArrangeParameter arrange_param = 785;
-// ZLP END to 785//
+
+  optional ShuffleChannelParameter shuffle_channel_param = 787;
+// ZLP END to 787//
 }
 
 // Message that stores parameters used to apply transformation
@@ -1484,5 +1486,10 @@ message ArrangeParameter {
     SPLIT = 1;
   }
   optional ArrangementMode arrangement = 2 [default = UNION];
+}
+
+// Message that stores parameters used by ShuffleChannelLayer
+message ShuffleChannelParameter {
+    optional uint32 group = 1 [default = 1]; // The number of group
 }
 // ZLP END//

@@ -67,9 +67,11 @@ void DepthwiseConvolutionLayer<Dtype>::Forward_gpu(
 		const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top) {
 //	std::cout << "fp" << std::endl;
 	const Dtype* weight = this->blobs_[0]->gpu_data();
-	int* kernel_shape_data = this->kernel_shape_.mutable_cpu_data();
-	int* stride_data = this->stride_.mutable_cpu_data();
-	int* pad_data = this->pad_.mutable_cpu_data();
+	// ZLP BEGIN
+	// int* kernel_shape_data = this->kernel_shape_.mutable_cpu_data();
+	// int* stride_data = this->stride_.mutable_cpu_data();
+	// int* pad_data = this->pad_.mutable_cpu_data();
+	// ZLP END
 
 	for (int i = 0; i < bottom.size(); ++i) {
 		const Dtype* bottom_data = bottom[i]->gpu_data();
@@ -80,15 +82,27 @@ void DepthwiseConvolutionLayer<Dtype>::Forward_gpu(
 		const int height_ = shape_[2];
 		const int width_ = shape_[3];
 
-		const int kernel_h_ = kernel_shape_data[0];
-		const int kernel_w_ = kernel_shape_data[1];
-		const int stride_h_ = stride_data[0];
-		const int stride_w_ = stride_data[1];
-		const int pad_h_ = pad_data[0];
-		const int pad_w_ = pad_data[1];
+		// ZLP BEGIN
+		// const int kernel_h_ = kernel_shape_data[0];
+		// const int kernel_w_ = kernel_shape_data[1];
+		// const int stride_h_ = stride_data[0];
+		// const int stride_w_ = stride_data[1];
+		// const int pad_h_ = pad_data[0];
+		// const int pad_w_ = pad_data[1];
 
-		const int conved_height = this->output_shape_[0];
-		const int conved_weight = this->output_shape_[1];
+		// const int conved_height = this->output_shape_[0];
+		// const int conved_weight = this->output_shape_[1];
+
+		const int kernel_h_ = this->kernel_h_;
+		const int kernel_w_ = this->kernel_w_;
+		const int stride_h_ = this->stride_h_;
+		const int stride_w_ = this->stride_w_;
+		const int pad_h_ = this->pad_h_;
+		const int pad_w_ = this->pad_w_;
+
+		const int conved_height = this->height_out_;
+		const int conved_weight = this->width_out_;
+		// ZLP END
 
 		const bool bias_term_ = this->bias_term_;
 
@@ -262,10 +276,11 @@ void DepthwiseConvolutionLayer<Dtype>::Backward_gpu(
 const vector<Blob<Dtype>*>& top, const vector<bool>& propagate_down,
 const vector<Blob<Dtype>*>& bottom) {
 
-
-	int* kernel_shape_data = this->kernel_shape_.mutable_cpu_data();
-	int* stride_data = this->stride_.mutable_cpu_data();
-	int* pad_data = this->pad_.mutable_cpu_data();
+	// ZLP BEGIN
+	// int* kernel_shape_data = this->kernel_shape_.mutable_cpu_data();
+	// int* stride_data = this->stride_.mutable_cpu_data();
+	// int* pad_data = this->pad_.mutable_cpu_data();
+	// ZLP END
 
 	const Dtype* weight = this->blobs_[0]->gpu_data();
 	Dtype* weight_diff = this->blobs_[0]->mutable_gpu_diff();
@@ -275,16 +290,27 @@ const vector<Blob<Dtype>*>& bottom) {
 	const bool bias_propagate_down_ = this->param_propagate_down_[1];
 	const bool weight_propagate_down_ = this->param_propagate_down_[0];
 
+	// ZLP BEGIN
+	// const int kernel_h_ = kernel_shape_data[0];
+	// const int kernel_w_ = kernel_shape_data[1];
+	// const int stride_h_ = stride_data[0];
+	// const int stride_w_ = stride_data[1];
+	// const int pad_h_ = pad_data[0];
+	// const int pad_w_ = pad_data[1];
 
-	const int kernel_h_ = kernel_shape_data[0];
-	const int kernel_w_ = kernel_shape_data[1];
-	const int stride_h_ = stride_data[0];
-	const int stride_w_ = stride_data[1];
-	const int pad_h_ = pad_data[0];
-	const int pad_w_ = pad_data[1];
+	// const int conved_height = this->output_shape_[0];
+	// const int conved_weight = this->output_shape_[1];
 
-	const int conved_height = this->output_shape_[0];
-	const int conved_weight = this->output_shape_[1];
+	const int kernel_h_ = this->kernel_h_;
+	const int kernel_w_ = this->kernel_w_;
+	const int stride_h_ = this->stride_h_;
+	const int stride_w_ = this->stride_w_;
+	const int pad_h_ = this->pad_h_;
+	const int pad_w_ = this->pad_w_;
+
+	const int conved_height = this->height_out_;
+	const int conved_weight = this->width_out_;
+	// ZLP END
 
 //	CHECK_EQ(stride_h_, 1)
 //	        << "The backward of the net whose stride is bigger than 1 is not implemented now. ";

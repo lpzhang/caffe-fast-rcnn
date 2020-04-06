@@ -179,40 +179,49 @@ void FocalSigmoidLossLayer<Dtype>::Forward_cpu(
   // Compute the loss
   const int count = bottom[0]->count();
   Dtype loss = 0;
-  const Dtype eps = Dtype(1e-6);
+  Dtype num_pos = Dtype(0.0);
+  const Dtype eps = Dtype(1e-4);
   if (bottom.size() == 2) {
     for (int i = 0; i < count; ++i) {
       if (fabs(Dtype(1.0) - target[i]) < eps) {
         // positive location target value equal to 1
         // - [ alpha * (1 - p_t) ^ gamma ] * [ log(p_t) ]
         loss -= power_neg_prob_data[i] * log_prob_data[i];
+        num_pos += 1.0;
       } else {
         // negative location target value less than 1
         // - [ alpha * p_t ^ gamma ] * [ log(1 - p_t) ] * [ (1 - y_t) ^ beta ]
         loss -= power_prob_data[i] * log_neg_prob_data[i] * power_penalty_data[i];
       }
     }
-    top[0]->mutable_cpu_data()[0] = loss / get_normalizer(normalization_, count);
+    // top[0]->mutable_cpu_data()[0] = loss / get_normalizer(normalization_, count);
   } else if (bottom.size() == 3) {
     const Dtype* weights = bottom[2]->cpu_data();
-    Dtype weight_sum = Dtype(0.0);
+    // Dtype weight_sum = Dtype(0.0);
     for (int i = 0; i < count; ++i) {
       if (fabs(Dtype(1.0) - target[i]) < eps) {
         // positive location target value equal to 1
         // - [ weights ] * [ alpha * (1 - p_t) ^ gamma ] * [ log(p_t) ]
         loss -= weights[i] * power_neg_prob_data[i] * log_prob_data[i];
+        num_pos += weights[i];
       } else {
         // negative location target value less than 1
         // - [ weights ] * [ alpha * p_t ^ gamma ] * [ log(1 - p_t) ] * [ (1 - y_t) ^ beta ]
         loss -= weights[i] * power_prob_data[i] * log_neg_prob_data[i] * power_penalty_data[i];
       }
-      weight_sum += weights[i];
+      // weight_sum += weights[i];
     }
-    if (weight_sum > Dtype(0.0)) {
-      top[0]->mutable_cpu_data()[0] = loss / weight_sum;
-    } else {
-      top[0]->mutable_cpu_data()[0] = loss / get_normalizer(normalization_, count);
-    }
+    // if (weight_sum > Dtype(0.0)) {
+    //   top[0]->mutable_cpu_data()[0] = loss / weight_sum;
+    // } else {
+    //   top[0]->mutable_cpu_data()[0] = loss / get_normalizer(normalization_, count);
+    // }
+  }
+  // Normalization
+  if (num_pos > Dtype(eps)) {
+    top[0]->mutable_cpu_data()[0] = loss / num_pos;
+  } else {
+    top[0]->mutable_cpu_data()[0] = loss;
   }
   // sigmoid output
   if (top.size() == 2) {
@@ -243,7 +252,8 @@ void FocalSigmoidLossLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
 
     const int count = bottom[0]->count();
     const Dtype loss_weight = top[0]->cpu_diff()[0]; // Scale down gradient
-    const Dtype eps = Dtype(1e-6);
+    const Dtype eps = Dtype(1e-4);
+    Dtype num_pos = Dtype(0.0);
     if (bottom.size() == 2) {
       for (int i = 0; i < count; ++i) {
         if (fabs(Dtype(1.0) - target[i]) < eps) {
@@ -251,6 +261,7 @@ void FocalSigmoidLossLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
           // - [ alpha * (1 - p_t) ^ gamma ] * [ - gamma * p_t * log(p_t) + (1 - p_t) ]
           bottom_diff[i] = 0 - power_neg_prob_data[i] 
                               * (0 - gamma_ * prob_data[i] * log_prob_data[i] + (1 - prob_data[i]));
+          num_pos += 1.0;
         } else {
           // negative location target less than 1
           // - [ alpha * p_t ^ gamma ] * [ gamma * (1 - p_t) * log(1 - p_t) - p_t ] * [ (1 - y_t) ^ beta ]
@@ -260,10 +271,10 @@ void FocalSigmoidLossLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
         }
       }
       // Scale down gradient
-      caffe_scal(count, loss_weight / get_normalizer(normalization_, count), bottom_diff);
+      // caffe_scal(count, loss_weight / get_normalizer(normalization_, count), bottom_diff);
     } else if (bottom.size() == 3) {
       const Dtype* weights = bottom[2]->cpu_data();
-      Dtype weight_sum = 0.0;
+      // Dtype weight_sum = 0.0;
       for (int i = 0; i < count; ++i) {
         // bottom_diff[i] *= weights[i];
         if (fabs(Dtype(1.0) - target[i]) < eps) {
@@ -271,6 +282,7 @@ void FocalSigmoidLossLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
           // - [ weights ] * [ alpha * (1 - p_t) ^ gamma ] * [ - gamma * p_t * log(p_t) + (1 - p_t) ]
           bottom_diff[i] = 0 - weights[i] * power_neg_prob_data[i] 
                               * (0 - gamma_ * prob_data[i] * log_prob_data[i] + (1 - prob_data[i]));
+          num_pos += weights[i];
         } else {
           // negative location target less than 1
           // - [ weights ] * [ alpha * p_t ^ gamma ] * [ gamma * (1 - p_t) * log(1 - p_t) - p_t ] * [ (1 - y_t) ^ beta ]
@@ -278,14 +290,20 @@ void FocalSigmoidLossLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
                               * (gamma_ * (1 - prob_data[i]) * log_neg_prob_data[i] - prob_data[i]) 
                               * power_penalty_data[i];
         }
-        weight_sum += weights[i];
+        // weight_sum += weights[i];
       }
       // Scale down gradient
-      if (weight_sum > 0.0) {
-        caffe_scal(count, loss_weight / weight_sum, bottom_diff);
-      } else {
-        caffe_scal(count, loss_weight / get_normalizer(normalization_, count), bottom_diff);
-      }
+      // if (weight_sum > 0.0) {
+      //   caffe_scal(count, loss_weight / weight_sum, bottom_diff);
+      // } else {
+      //   caffe_scal(count, loss_weight / get_normalizer(normalization_, count), bottom_diff);
+      // }
+    }
+    // Scale down gradient
+    if (num_pos > eps) {
+      caffe_scal(count, loss_weight / num_pos, bottom_diff);
+    } else {
+      caffe_scal(count, loss_weight, bottom_diff);
     }
   }
 }

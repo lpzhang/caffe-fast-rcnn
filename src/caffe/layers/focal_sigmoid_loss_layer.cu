@@ -122,7 +122,7 @@ void FocalSigmoidLossLayer<Dtype>::Forward_gpu(
   // weights in bottom[2] if any
   if (bottom.size() == 3) {
     caffe_gpu_mul(nthreads, bottom[2]->gpu_data(), bottom[0]->gpu_diff(), loss_data);
-    caffe_gpu_mul(nthreads, bottom[2]->gpu_data(), prob_->gpu_diff(), counts);
+    caffe_gpu_mul(nthreads, bottom[2]->gpu_data(), prob_.gpu_diff(), counts);
   }
   Dtype loss;
   caffe_gpu_asum(nthreads, loss_data, &loss);
@@ -224,7 +224,7 @@ void FocalSigmoidLossLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
     // weights in bottom[2] if any
     if (bottom.size() == 3) {
       caffe_gpu_mul(nthreads, bottom[2]->gpu_data(), bottom[0]->gpu_diff(), bottom_diff);
-      caffe_gpu_mul(nthreads, bottom[2]->gpu_data(), prob_->gpu_diff(), counts);
+      caffe_gpu_mul(nthreads, bottom[2]->gpu_data(), prob_.gpu_diff(), counts);
     }
     // // Only launch another CUDA kernel if we actually need the count of valid outputs.
     // Dtype valid_count = -1;

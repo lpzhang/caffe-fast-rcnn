@@ -134,7 +134,7 @@ __global__ void KeypointBackward(const int nthreads,
     const int spatial_index = static_cast<int>(iloc[n * num_objs + s]);
     const int prob_index = n * channels * prob_spatial_dim + c * prob_spatial_dim + spatial_index;
     if (mask_val > 0) {
-      bottom_diff[prob_index] = diff_[index]
+      bottom_diff[prob_index] = diff_[index];
     } else {
       bottom_diff[prob_index] = 0;
     }

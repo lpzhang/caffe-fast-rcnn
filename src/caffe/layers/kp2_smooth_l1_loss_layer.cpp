@@ -21,11 +21,11 @@ void KP2SmoothL1LossLayer<Dtype>::Reshape(
   const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top) {
   LossLayer<Dtype>::Reshape(bottom, top);
   // bottom0 prediction (N, C, H, W)
-  // bottom1 groundtruth (N, C, num_objs)
-  // bottom2 mask (N, num_objs)
-  // bottom3 iloc (N, num_objs)
-  // bottom4 inside weights (N, C, num_objs)
-  // bottom5 outside weights (N, C, num_objs)
+  // bottom1 groundtruth (N, C, num_objs, 1)
+  // bottom2 mask (N, num_objs, 1, 1)
+  // bottom3 iloc (N, num_objs, 1, 1)
+  // bottom4 inside weights (N, C, num_objs, 1)
+  // bottom5 outside weights (N, C, num_objs, 1)
   CHECK_EQ(bottom[0]->num(), bottom[1]->num())
       << "batch size should be the same.";
   CHECK_EQ(bottom[0]->num(), bottom[2]->num())
@@ -34,12 +34,12 @@ void KP2SmoothL1LossLayer<Dtype>::Reshape(
       << "batch size should be the same.";
 
   CHECK_EQ(bottom[0]->channels(), bottom[1]->channels())
-      << "numbers of channels should be the same for prediction (n,c,h,w) and groundtruth (n,c,num_objs).";
+      << "numbers of channels should be the same for prediction (n,c,h,w) and groundtruth (n,c,num_objs, 1).";
   
   CHECK_EQ(bottom[1]->count(2), bottom[2]->count(1))
-      << "groundtruth (n, c, num_objs) and mask (n, num_objs) should have the same num_objs.";
+      << "groundtruth (n, c, num_objs, 1) and mask (n, num_objs, 1, 1) should have the same num_objs.";
   CHECK_EQ(bottom[1]->count(2), bottom[3]->count(1))
-      << "groundtruth (n, c, num_objs) and the spatial location index iloc(n, num_objs)"
+      << "groundtruth (n, c, num_objs, 1) and the spatial location index iloc(n, num_objs, 1)"
       << "should have same num_objs.";
 
   if (has_weights_) {
@@ -70,10 +70,10 @@ void KP2SmoothL1LossLayer<Dtype>::Reshape(
   // vector of ones used to sum
   // ones_.Reshape(bottom[0]->num(), bottom[0]->channels(),
   //     bottom[0]->height(), bottom[0]->width());
-  ones_.Reshape(bottom[1]->num(), bottom[1]->channels(), bottom[1]->height(), bottom[1]->width());
-  for (int i = 0; i < bottom[1]->count(); ++i) {
-    ones_.mutable_cpu_data()[i] = Dtype(1);
-  }
+  // ones_.Reshape(bottom[1]->num(), bottom[1]->channels(), bottom[1]->height(), bottom[1]->width());
+  // for (int i = 0; i < bottom[1]->count(); ++i) {
+  //   ones_.mutable_cpu_data()[i] = Dtype(1);
+  // }
 }
 
 template <typename Dtype>

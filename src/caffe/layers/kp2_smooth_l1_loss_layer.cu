@@ -27,12 +27,12 @@ __global__ void KeypointForward(const int nthreads,
     const int channels, const int num_objs,
     const int prob_spatial_dim) {
   CUDA_KERNEL_LOOP(index, nthreads) {
-    // the n, c, and s of the index in label (N, C, num_objs)
+    // the n, c, and s of the index in label (N, C, num_objs, 1)
     const int n = index / channels / num_objs;
     const int c = index / num_objs;
     const int s = index % num_objs;
     // calculate the corresponding index in prob_data (N, C, H, W)
-    // mask (N, num_objs), iloc (N, num_objs)
+    // mask (N, num_objs), iloc (N, num_objs, 1, 1)
     const int mask_val = static_cast<int>(mask[n * num_objs + s]);
     if (mask_val > 0) {
       const int spatial_index = static_cast<int>(iloc[n * num_objs + s]);
@@ -46,9 +46,9 @@ template <typename Dtype>
 void KP2SmoothL1LossLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
     const vector<Blob<Dtype>*>& top) {
   // prediction (N, C, H, W), 
-  // groundtruth(N, C, num_objs),
-  // binary indicator of objects existence: mask (N, num_objs)
-  // spatial location index of objects    : iloc (N, num_objs)
+  // groundtruth(N, C, num_objs, 1),
+  // binary indicator of objects existence: mask (N, num_objs, 1, 1)
+  // spatial location index of objects    : iloc (N, num_objs, 1, 1)
   const Dtype* prob_data = bottom[0]->gpu_data();
   const Dtype* label     = bottom[1]->gpu_data();
   const Dtype* mask      = bottom[2]->gpu_data();
@@ -83,7 +83,7 @@ void KP2SmoothL1LossLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom
   // NOLINT_NEXT_LINE(whitespace/operators)
   SmoothL1Forward<Dtype><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
       count, diff_.gpu_data(), errors_.mutable_gpu_data(), sigma2_);
-  CUDA_POST_KERNEL_CHECK;
+  // CUDA_POST_KERNEL_CHECK;
   // outside weights bottom[5]->gpu_data() (N, C, num_objs)
   if (has_weights_) {
     // apply "outside" weights
@@ -95,7 +95,8 @@ void KP2SmoothL1LossLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom
   }
 
   Dtype loss;
-  caffe_gpu_dot(count, ones_.gpu_data(), errors_.gpu_data(), &loss);
+  // caffe_gpu_dot(count, ones_.gpu_data(), errors_.gpu_data(), &loss);
+  caffe_gpu_asum(count, errors_.gpu_data(), &loss);
   // calculate the total numbers of positive objects by summing mask (N, num_objs)
   Dtype num_pos = 0;
   caffe_gpu_asum(bottom[2]->count(), bottom[2]->gpu_data(), &num_pos);
@@ -164,7 +165,7 @@ void KP2SmoothL1LossLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
     // NOLINT_NEXT_LINE(whitespace/operators)
     SmoothL1Backward<Dtype><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
         count, diff_.gpu_data(), diff_.mutable_gpu_data(), sigma2_);
-    CUDA_POST_KERNEL_CHECK;
+    // CUDA_POST_KERNEL_CHECK;
     
     // Scale diff_ first, since diff_ and weights have the same dimension (N, C, num_objs)
     if (has_weights_) {

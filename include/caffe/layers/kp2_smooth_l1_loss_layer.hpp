@@ -47,7 +47,7 @@ class KP2SmoothL1LossLayer : public LossLayer<Dtype> {
 
   Blob<Dtype> diff_;
   Blob<Dtype> errors_;
-  Blob<Dtype> ones_;
+  
   bool has_weights_;
   Dtype sigma2_;
 };

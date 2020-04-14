@@ -20,60 +20,38 @@ template <typename Dtype>
 void KP2SmoothL1LossLayer<Dtype>::Reshape(
   const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top) {
   LossLayer<Dtype>::Reshape(bottom, top);
-  // bottom0 prediction (N, C, H, W)
-  // bottom1 groundtruth (N, C, num_objs)
-  // bottom2 mask (N, num_objs)
-  // bottom3 iloc (N, num_objs)
-  // bottom4 inside weights (N, C, num_objs)
-  // bottom5 outside weights (N, C, num_objs)
-  CHECK_EQ(bottom[0]->num(), bottom[1]->num())
-      << "batch size should be the same.";
-  CHECK_EQ(bottom[0]->num(), bottom[2]->num())
-      << "batch size should be the same.";
-  CHECK_EQ(bottom[0]->num(), bottom[3]->num())
-      << "batch size should be the same.";
 
-  CHECK_EQ(bottom[0]->channels(), bottom[1]->channels())
-      << "numbers of channels should be the same for prediction (n,c,h,w) and groundtruth (n,c,num_objs).";
-  
-  CHECK_EQ(bottom[1]->count(2), bottom[2]->count(1))
-      << "groundtruth (n, c, num_objs) and mask (n, num_objs) should have the same num_objs.";
-  CHECK_EQ(bottom[1]->count(2), bottom[3]->count(1))
-      << "groundtruth (n, c, num_objs) and the spatial location index iloc(n, num_objs)"
-      << "should have same num_objs.";
-
+  // bottom 0: prediction with shape (N, C, H, W).
+  // bottom 1: groundtruth with shape (N, C, max_objs) or (N, C, max_objs, 1).
+  // bottom 2: mask with shape (N, max_objs) or (N, max_objs, 1, 1), 
+  //           binary indicator of objects existence (1 or 0).
+  // bottom 3: iloc with shape (N, max_objs) or (N, max_objs, 1, 1), 
+  //           object spatial index in bottom_data (H,W) plane that calculated by (hW+w).
+  // bottom 4: inside weights has same shape with groundtruth (N, C, max_objs) or (N, C, max_objs, 1).
+  // bottom 5: outside weights has same shape with groundtruth (N, C, max_objs) or (N, C, max_objs, 1).
+  // batch size
+  CHECK_EQ(bottom[0]->num(), bottom[1]->num());
+  CHECK_EQ(bottom[0]->num(), bottom[2]->num());
+  CHECK_EQ(bottom[0]->num(), bottom[3]->num());
+  // channel
+  CHECK_EQ(bottom[0]->channels(), bottom[1]->channels());
+  // max_objs
+  CHECK_EQ(bottom[1]->count(2), bottom[2]->count(1));
+  CHECK_EQ(bottom[1]->count(2), bottom[3]->count(1));
   if (has_weights_) {
-    CHECK_EQ(bottom[1]->num(), bottom[4]->num())
-        << "batch size should be the same.";
-    CHECK_EQ(bottom[1]->num(), bottom[5]->num())
-        << "batch size should be the same.";
-    CHECK_EQ(bottom[1]->channels(), bottom[4]->channels())
-        << "numbers of channels should be the same.";
-    CHECK_EQ(bottom[1]->channels(), bottom[5]->channels())
-        << "numbers of channels should be the same.";
-    CHECK_EQ(bottom[1]->height(), bottom[4]->height())
-        << "height should be the same.";
-    CHECK_EQ(bottom[1]->height(), bottom[5]->height())
-        << "height should be the same.";
-    CHECK_EQ(bottom[1]->width(), bottom[4]->width())
-        << "width should be the same.";
-    CHECK_EQ(bottom[1]->width(), bottom[5]->width())
-        << "width should be the same.";
+    // each object has a weight.
+    CHECK_EQ(bottom[1]->num(), bottom[4]->num());
+    CHECK_EQ(bottom[1]->num(), bottom[5]->num());
+    CHECK_EQ(bottom[1]->channels(), bottom[4]->channels());
+    CHECK_EQ(bottom[1]->channels(), bottom[5]->channels());
+    CHECK_EQ(bottom[1]->count(2), bottom[4]->count(2));
+    CHECK_EQ(bottom[1]->count(2), bottom[5]->count(2));
   }
   
-  // diff_.Reshape(bottom[0]->num(), bottom[0]->channels(),
-  //     bottom[0]->height(), bottom[0]->width());
-  diff_.Reshape(bottom[1]->num(), bottom[1]->channels(), bottom[1]->height(), bottom[1]->width());
-  // errors_.Reshape(bottom[0]->num(), bottom[0]->channels(),
-  //     bottom[0]->height(), bottom[0]->width());
-  errors_.Reshape(bottom[1]->num(), bottom[1]->channels(), bottom[1]->height(), bottom[1]->width());
-  // vector of ones used to sum
-  // ones_.Reshape(bottom[0]->num(), bottom[0]->channels(),
-  //     bottom[0]->height(), bottom[0]->width());
-  ones_.Reshape(bottom[1]->num(), bottom[1]->channels(), bottom[1]->height(), bottom[1]->width());
-  for (int i = 0; i < bottom[1]->count(); ++i) {
-    ones_.mutable_cpu_data()[i] = Dtype(1);
-  }
+  diff_.Reshape(bottom[1]->num(), bottom[1]->channels(),
+    bottom[1]->height(), bottom[1]->width());
+  errors_.Reshape(bottom[1]->num(), bottom[1]->channels(),
+    bottom[1]->height(), bottom[1]->width());
 }
 
 template <typename Dtype>

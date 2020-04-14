@@ -27,9 +27,9 @@ __global__ void KeypointForwardGPU(const int nthreads,
     Dtype* diff) {
   CUDA_KERNEL_LOOP(index, nthreads) {
     // (n, c, m) is an element index in bottom_label (N, C, max_objs) or (N, C, max_objs, 1)
-    m = index % max_objs;
-    c = index / max_objs % channels;
-    n = index / max_objs / channels;
+    const int m = index % max_objs;
+    const int c = index / max_objs % channels;
+    const int n = index / max_objs / channels;
 
     // bottom_mask with shape (N, max_objs) or (N, max_objs, 1, 1),
     // index mapping: bottom_label (n, c, m) => (n, m) bottom_mask
@@ -127,9 +127,9 @@ __global__ void KeypointBackwardGPU(const int nthreads,
     Dtype* bottom_diff) {
   CUDA_KERNEL_LOOP(index, nthreads) {
     // (n, c, m) is an element index in bottom_label (N, C, max_objs) or (N, C, max_objs, 1)
-    m = index % max_objs;
-    c = index / max_objs % channels;
-    n = index / max_objs / channels;
+    const int m = index % max_objs;
+    const int c = index / max_objs % channels;
+    const int n = index / max_objs / channels;
 
     // bottom_mask with shape (N, max_objs) or (N, max_objs, 1, 1),
     // index mapping: bottom_label (n, c, m) => (n, m) bottom_mask

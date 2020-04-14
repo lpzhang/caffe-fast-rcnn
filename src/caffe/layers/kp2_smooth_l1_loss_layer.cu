@@ -184,7 +184,7 @@ void KP2SmoothL1LossLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
 
     // mapping the gradient of diff_ (N, C, max_objs, 1) back to bottom_diff (N, C, H, W)
     KeypointBackwardGPU<Dtype><<<CAFFE_GET_BLOCKS(nthreads), CAFFE_CUDA_NUM_THREADS>>>(nthreads,
-        diff_.gpu_data(), bottom_mask, bottom_iloc, channels, max_objs, spatial_dim
+        diff_.gpu_data(), bottom_mask, bottom_iloc, channels, max_objs, spatial_dim,
         bottom_diff);
     CUDA_POST_KERNEL_CHECK;
   }

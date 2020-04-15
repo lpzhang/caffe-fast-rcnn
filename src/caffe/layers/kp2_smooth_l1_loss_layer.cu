@@ -42,6 +42,8 @@ __global__ void KeypointForwardGPU(const int nthreads,
 
     if (indicator > 0) {
       diff[index] = bottom_data[bottom_data_ind] - bottom_label[index];
+    } else {
+      diff[index] = 0;
     }
   }
 }
@@ -101,7 +103,7 @@ void KP2SmoothL1LossLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom
   // the number of positive objects by summing mask (N, max_objs) or (N, max_objs, 1, 1)
   Dtype num_pos = 0;
   caffe_gpu_asum(bottom[2]->count(), bottom_mask, &num_pos);
-  top[0]->mutable_cpu_data()[0] = loss / (num_pos + Dtype(1e-4));
+  top[0]->mutable_cpu_data()[0] = loss / (channels * num_pos + Dtype(1e-4));
 }
 
 template <typename Dtype>
@@ -142,6 +144,8 @@ __global__ void KeypointBackwardGPU(const int nthreads,
 
     if (indicator > 0) {
       bottom_diff[bottom_data_ind] = diff[index];
+    } else {
+      bottom_diff[bottom_data_ind] = 0;
     }
   }
 }
@@ -179,7 +183,7 @@ void KP2SmoothL1LossLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
     // the number of positive objects by summing mask (N, max_objs) or (N, max_objs, 1, 1)
     Dtype num_pos = 0;
     caffe_gpu_asum(bottom[2]->count(), bottom_mask, &num_pos);
-    const Dtype loss_weight = top[0]->cpu_diff()[0] / (num_pos + Dtype(1e-4));
+    const Dtype loss_weight = top[0]->cpu_diff()[0] / (channels * num_pos + Dtype(1e-4));
     caffe_gpu_scal(nthreads, loss_weight, diff_.mutable_gpu_data());
 
     // mapping the gradient of diff_ (N, C, max_objs, 1) back to bottom_diff (N, C, H, W)

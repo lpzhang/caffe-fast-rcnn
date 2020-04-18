@@ -1,0 +1,355 @@
+#include <algorithm>
+#include <cfloat>
+#include <vector>
+
+#include "caffe/layers/focal_softmax_loss_layer.hpp"
+#include "caffe/util/math_functions.hpp"
+
+namespace caffe {
+
+template <typename Dtype>
+void FocalSoftmaxLossLayer<Dtype>::LayerSetUp(
+    const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top)
+{
+  // softmax laye setup
+  LossLayer<Dtype>::LayerSetUp(bottom, top);
+  LayerParameter softmax_param(this->layer_param_);
+  softmax_param.set_type("Softmax");
+  softmax_layer_ = LayerRegistry<Dtype>::CreateLayer(softmax_param);
+  softmax_bottom_vec_.clear();
+  softmax_bottom_vec_.push_back(bottom[0]);
+  softmax_top_vec_.clear();
+  softmax_top_vec_.push_back(&prob_);
+  softmax_layer_->SetUp(softmax_bottom_vec_, softmax_top_vec_);
+
+  // ignore label
+  has_ignore_label_ = this->layer_param_.loss_param().has_ignore_label();
+  if (has_ignore_label_) {
+    ignore_label_   = this->layer_param_.loss_param().ignore_label();
+  }
+
+  // normalization
+  if (!this->layer_param_.loss_param().has_normalization() &&
+       this->layer_param_.loss_param().has_normalize())
+  {
+    normalization_ = this->layer_param_.loss_param().normalize() ?
+                     LossParameter_NormalizationMode_VALID :
+                     LossParameter_NormalizationMode_BATCH_SIZE;
+  } else {
+    normalization_ = this->layer_param_.loss_param().normalization();
+  }
+
+  // focal softmax loss parameter
+  FocalSoftmaxLossParameter focal_softmax_loss_param = this->layer_param_.focal_softmax_loss_param();
+  alpha_ = focal_softmax_loss_param.alpha();
+  beta_  = focal_softmax_loss_param.beta();
+  gamma_ = focal_softmax_loss_param.gamma();
+  type_  = focal_softmax_loss_param.type();
+  LOG(INFO) << "alpha: " << alpha_;
+  LOG(INFO) << "beta: "  << beta_;
+  LOG(INFO) << "gamma: " << gamma_;
+  LOG(INFO) << "type: "  << type_;
+  CHECK_GE(gamma_, 0) << "gamma must be larger than or equal to zero";
+  CHECK_GT(alpha_, 0) << "alpha must be larger than zero";
+  // CHECK_LE(alpha_, 1) << "alpha must be smaller than or equal to one";
+}
+
+template <typename Dtype>
+void FocalSoftmaxLossLayer<Dtype>::Reshape(
+    const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top)
+{
+  // softmax laye reshape
+  LossLayer<Dtype>::Reshape(bottom, top);
+  softmax_layer_->Reshape(softmax_bottom_vec_, softmax_top_vec_);
+
+  // cross-channels
+  softmax_axis_ = bottom[0]->CanonicalAxisIndex(this->layer_param_.softmax_param().axis());
+  outer_num_    = bottom[0]->count(0, softmax_axis_);
+  inner_num_    = bottom[0]->count(softmax_axis_ + 1);
+  CHECK_EQ(outer_num_ * inner_num_, bottom[1]->count())
+      << "Number of labels must match number of predictions; "
+      << "e.g., if softmax axis == 1 and prediction shape is (N, C, H, W), "
+      << "label count (number of labels) must be N*H*W, "
+      << "with integer values in {0, 1, ..., C-1}.";
+
+  // softmax output
+  if (top.size() >= 2) {
+    top[1]->ReshapeLike(*bottom[0]);
+  }
+  /*
+    FL(p_t) = - alpha * (1 - p_t) ^ gamma * log(p_t)
+            = - alpha * (1 - p_t) ^ (gamma - 1) * (1 - p_t) * log(p_t)
+    grad(t == k):
+            = alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ gamma) * (p_t - 1)
+            = alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ (gamma - 1) * (1 - p_t)) * (p_t -1)
+            = (- gamma * [alpha * (1 - p_t) ^ (gamma - 1)] * p_t * log(p_t) + [alpha * (1 - p_t) ^ (gamma - 1)] * (1 - p_t)) * (p_t -1)
+    grad(t != k):
+            = alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ gamma) * p_k
+            = alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ (gamma - 1) * (1 - p_t)) * p_k
+            = (- gamma * [alpha * (1 - p_t) ^ (gamma - 1)] * p_t * log(p_t) + [alpha * (1 - p_t) ^ (gamma - 1)] * (1 - p_t)) * p_k
+  */
+  // log(p_t)
+  log_prob_.ReshapeLike(*bottom[0]);
+  CHECK_EQ(prob_.count(), log_prob_.count());
+  // alpha * (1 - p_t) ^ (gamma - 1)
+  power_prob_.ReshapeLike(*bottom[0]);
+  CHECK_EQ(prob_.count(), power_prob_.count());
+  // 1
+  ones_.ReshapeLike(*bottom[0]);
+  CHECK_EQ(prob_.count(), ones_.count());
+  caffe_set(prob_.count(), Dtype(1), ones_.mutable_cpu_data());
+
+  // if size of bottom equal 3, then use bottom[2] as weighted blob
+  if (bottom.size() == 2) {
+    const WeightedSoftmaxWithLossParameter& weighted_softmax_loss_param = this->layer_param_.weighted_softmax_loss_param();
+    CHECK_EQ(weighted_softmax_loss_param.label_weight_size(), weighted_softmax_loss_param.label_id_size())
+          << "label_weight_size must equal to label_id_size";
+    CHECK_GT(weighted_softmax_loss_param.label_weight_size(), 0)
+          << "label_weight_size must Greater than 0";
+    CHECK_LE(weighted_softmax_loss_param.label_id_size(), bottom[0]->count(softmax_axis_, softmax_axis_ + 1))
+          << "Number of label_id must not exceed the number of labels; ";
+
+    // Reshape and Init all labels have weight 1.
+    label_weight_.Reshape(bottom[0]->count(softmax_axis_, softmax_axis_ + 1), 1, 1, 1);
+    Dtype* label_weight_data = label_weight_.mutable_cpu_data();
+    caffe_set(label_weight_.count(), Dtype(1), label_weight_data);
+
+    // Set weight
+    for (int i = 0; i < weighted_softmax_loss_param.label_weight_size(); ++i) {
+      int label_id = weighted_softmax_loss_param.label_id(i);
+      CHECK_GE(label_id, 0)
+          << "label_id must greater than or equal to 0";
+      CHECK_LT(label_id, bottom[0]->count(softmax_axis_, softmax_axis_ + 1))
+          << "label_id must not exceed number of prediction labels; "
+          << "e.g., if softmax axis == 1 and prediction shape is (N, C, H, W), "
+          << "label_id must be integer values in {0, 1, ..., C-1}.";
+      label_weight_data[label_id] = weighted_softmax_loss_param.label_weight(i);
+    } else {
+      CHECK_EQ(bottom[1]->count(), bottom[2]->count());
+    }
+  }
+}
+
+template <typename Dtype>
+Dtype FocalSoftmaxLossLayer<Dtype>::get_normalizer(
+    LossParameter_NormalizationMode normalization_mode, int valid_count)
+{
+  Dtype normalizer;
+  switch (normalization_mode) {
+    case LossParameter_NormalizationMode_FULL:
+      normalizer = Dtype(outer_num_ * inner_num_);
+      break;
+    case LossParameter_NormalizationMode_VALID:
+      if (valid_count == -1) {
+        normalizer = Dtype(outer_num_ * inner_num_);
+      } else {
+        normalizer = Dtype(valid_count);
+      }
+      break;
+    case LossParameter_NormalizationMode_BATCH_SIZE:
+      normalizer = Dtype(outer_num_);
+      break;
+    case LossParameter_NormalizationMode_NONE:
+      normalizer = Dtype(1);
+      break;
+    default:
+      LOG(FATAL) << "Unknown normalization mode: "
+          << LossParameter_NormalizationMode_Name(normalization_mode);
+  }
+  // Some users will have no labels for some examples in order to 'turn off' a
+  // particular loss in a multi-task setup. The max prevents NaNs in that case.
+  return std::max(Dtype(1.0), normalizer);
+}
+
+template <typename Dtype>
+void FocalSoftmaxLossLayer<Dtype>::compute_intermediate_values_of_cpu() {
+  // compute the corresponding variables
+  const int count        = prob_.count();
+  const Dtype* prob_data = prob_.cpu_data();
+  const Dtype* ones_data = ones_.cpu_data();
+  Dtype* log_prob_data   = log_prob_.mutable_cpu_data();
+  Dtype* power_prob_data = power_prob_.mutable_cpu_data();
+
+  /// log(p_t)
+  const Dtype eps        = Dtype(FLT_MIN); // where FLT_MIN = 1.17549e-38, here u can change it
+  // more stable
+  for(int i = 0; i < prob_.count(); i++) {
+    log_prob_data[i] = log(std::max(prob_data[i], eps));
+  }
+  /// caffe_log(count,  prob_data, log_prob_data);
+
+  /// alpha * (1 - p_t) ^ (gamma - 1)
+  caffe_sub(count,  ones_data, prob_data, power_prob_data);
+  caffe_powx(count, power_prob_.cpu_data(), gamma_ - 1, power_prob_data);
+  caffe_scal(count, alpha_, power_prob_data);
+}
+
+template <typename Dtype>
+void FocalSoftmaxLossLayer<Dtype>::Forward_cpu(
+    const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top)
+{
+  // The forward pass computes the softmax prob values.
+  softmax_layer_->Forward(softmax_bottom_vec_, softmax_top_vec_);
+
+  // compute all needed values
+  compute_intermediate_values_of_cpu();
+  const Dtype* prob_data       = prob_.cpu_data();
+  const Dtype* label           = bottom[1]->cpu_data();
+  const Dtype* log_prob_data   = log_prob_.cpu_data();
+  const Dtype* power_prob_data = power_prob_.cpu_data();
+
+  // Get label_weight_data
+  const Dtype* label_weight_data;
+  if (bottom.size() == 2) {
+    label_weight_data = label_weight_.cpu_data();
+  } else {
+    // Get label_weight_data from bottom[2]
+    label_weight_data = bottom[2]->cpu_data();
+  }
+
+  // compute loss
+  int count    = 0;
+  int channels = prob_.shape(softmax_axis_);
+  int dim      = prob_.count() / outer_num_;
+
+  Dtype loss = 0;
+  for (int i = 0; i < outer_num_; ++i) {
+    for (int j = 0; j < inner_num_; j++) {
+      const int label_value = static_cast<int>(label[i * inner_num_ + j]);
+      if (has_ignore_label_ && label_value == ignore_label_) {
+        continue;
+      }
+      DCHECK_GE(label_value, 0);
+      DCHECK_LT(label_value, channels);
+      /*
+        FL(p_t) = - alpha * (1 - p_t) ^ gamma * log(p_t)
+                = - alpha * (1 - p_t) ^ (gamma - 1) * (1 - p_t) * log(p_t)
+        grad(t == k):
+                = alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ gamma) * (p_t - 1)
+                = alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ (gamma - 1) * (1 - p_t)) * (p_t -1)
+                = (- gamma * [alpha * (1 - p_t) ^ (gamma - 1)] * p_t * log(p_t) + [alpha * (1 - p_t) ^ (gamma - 1)] * (1 - p_t)) * (p_t -1)
+        grad(t != k):
+                = alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ gamma) * p_k
+                = alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ (gamma - 1) * (1 - p_t)) * p_k
+                = (- gamma * [alpha * (1 - p_t) ^ (gamma - 1)] * p_t * log(p_t) + [alpha * (1 - p_t) ^ (gamma - 1)] * (1 - p_t)) * p_k
+      */
+      // Get weight and then Weight the loss
+      Dtype w = 1;
+      if (bottom.size() == 2) {
+        w = label_weight_data[label_value];
+      } else {
+        w = label_weight_data[i * inner_num_ + j];
+      }
+      const int ind_t  = i * dim + label_value * inner_num_ + j;
+      // FL(p_t) = - [alpha * (1 - p_t) ^ (gamma - 1)] * [(1 - p_t)] * [log(p_t)]
+      loss -= w * power_prob_data[ind_t] * (1 - prob_data[ind_t]) * log_prob_data[ind_t];
+
+      ++count;
+    }
+  }
+
+  // prob
+  top[0]->mutable_cpu_data()[0] = loss / get_normalizer(normalization_, count);
+  if (top.size() == 2) {
+    top[1]->ShareData(prob_);
+  }
+}
+
+template <typename Dtype>
+void FocalSoftmaxLossLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
+    const vector<bool>& propagate_down, const vector<Blob<Dtype>*>& bottom)
+{
+  if (propagate_down[1]) {
+    LOG(FATAL) << this->type()
+               << " Layer cannot backpropagate to label inputs.";
+  }
+
+  if (propagate_down[0]) {
+    // data
+    Dtype* bottom_diff     = bottom[0]->mutable_cpu_diff();
+    const Dtype* prob_data = prob_.cpu_data();
+    const Dtype* label     = bottom[1]->cpu_data();
+    // intermidiate
+    const Dtype* log_prob_data   = log_prob_.cpu_data();
+    const Dtype* power_prob_data = power_prob_.cpu_data();
+
+    // Get label_weight_data
+    const Dtype* label_weight_data;
+    if (bottom.size() == 2) {
+      label_weight_data = label_weight_.cpu_data();
+    } else {
+      // Get label_weight_data from bottom[2]
+      label_weight_data = bottom[2]->cpu_data();
+    }
+
+    int count       = 0;
+    int channels    = bottom[0]->shape(softmax_axis_);
+    int dim         = prob_.count() / outer_num_;
+
+    for (int i = 0; i < outer_num_; ++i) {
+      for (int j = 0; j < inner_num_; ++j) {
+        // label
+        const int label_value = static_cast<int>(label[i * inner_num_ + j]);
+        // ignore label
+        if (has_ignore_label_ && label_value == ignore_label_) {
+          for (int c = 0; c < channels; ++c) {
+            bottom_diff[i * dim + c * inner_num_ + j] = 0;
+          }
+          continue;
+        }
+        /*
+          FL(p_t) = - alpha * (1 - p_t) ^ gamma * log(p_t)
+                  = - alpha * (1 - p_t) ^ (gamma - 1) * (1 - p_t) * log(p_t)
+          grad(t == k):
+                  = alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ gamma) * (p_t - 1)
+                  = alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ (gamma - 1) * (1 - p_t)) * (p_t -1)
+                  = (- gamma * [alpha * (1 - p_t) ^ (gamma - 1)] * p_t * log(p_t) + [alpha * (1 - p_t) ^ (gamma - 1)] * (1 - p_t)) * (p_t -1)
+          grad(t != k):
+                  = alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ gamma) * p_k
+                  = alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ (gamma - 1) * (1 - p_t)) * p_k
+                  = (- gamma * [alpha * (1 - p_t) ^ (gamma - 1)] * p_t * log(p_t) + [alpha * (1 - p_t) ^ (gamma - 1)] * (1 - p_t)) * p_k
+        */
+        // the gradient from FL w.r.t p_t, here ignore the `sign`
+        // index of ground-truth label in prob.
+        const int ind_t  = i * dim + label_value * inner_num_ + j;
+        // alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ (gamma - 1) * (1 - p_t))
+        // - gamma * [alpha * (1 - p_t) ^ (gamma - 1)] * p_t * log(p_t) + [alpha * (1 - p_t) ^ (gamma - 1)] * (1 - p_t)
+        Dtype grad = 0 - gamma_ * power_prob_data[ind_t] * prob_data[ind_t] * log_prob_data[ind_t]
+                        + power_prob_data[ind_t] * (1 - prob_data[ind_t]);
+        // the gradient w.r.t input data x
+        // Get weight and Weight each bottom[0]->shape(softmax_axis_)
+        Dtype w = 1;
+        if (bottom.size() == 2) {
+            w = label_weight_data[label_value];
+        } else {
+            w = label_weight_data[i * inner_num_ + j];
+        }
+        for (int c = 0; c < channels; ++c) {
+          int ind_k = i * dim + c * inner_num_ + j;
+          if(c == label_value) {
+            CHECK_EQ(ind_t, ind_k);
+            // if t == k, (here t,k are refered for derivative of softmax), grad * (p_t -1)
+            bottom_diff[ind_k] = w * grad * (prob_data[ind_t] - 1);
+          } else {
+            // if t != k, (here t,k are refered for derivative of softmax), grad * p_k
+            bottom_diff[ind_k] = w * grad * prob_data[ind_k];
+          }
+        }
+        // count
+        ++count;
+      }
+    }
+    // Scale gradient
+    Dtype loss_weight = top[0]->cpu_diff()[0] / get_normalizer(normalization_, count);
+    caffe_scal(prob_.count(), loss_weight, bottom_diff);
+  }
+}
+
+#ifdef CPU_ONLY
+STUB_GPU(FocalSoftmaxLossLayer);
+#endif
+
+INSTANTIATE_CLASS(FocalSoftmaxLossLayer);
+REGISTER_LAYER_CLASS(FocalSoftmaxLoss);
+
+}  // namespace caffe

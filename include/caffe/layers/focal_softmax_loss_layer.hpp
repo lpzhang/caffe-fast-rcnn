@@ -1,5 +1,5 @@
-#ifndef CAFFE_FOCAL_SIGMOID_LOSS_LAYER_HPP_
-#define CAFFE_FOCAL_SIGMOID_LOSS_LAYER_HPP_
+#ifndef CAFFE_FOCAL_SOFTMAX_LOSS_LAYER_HPP_
+#define CAFFE_FOCAL_SOFTMAX_LOSS_LAYER_HPP_
 
 #include <vector>
 
@@ -12,20 +12,19 @@
 namespace caffe {
 
 /**
- * A variant of focal loss ("Focal Loss for Dense Object Detection")
- * For details, see "CornerNet: Detecting Objects as Paired Keypoints"
+ * Please refer "Focal Loss for Dense Object Detection"
  */
 template <typename Dtype>
-class FocalSigmoidLossLayer : public LossLayer<Dtype> {
+class FocalSoftmaxLossLayer : public LossLayer<Dtype> {
  public:
-  explicit FocalSigmoidLossLayer(const LayerParameter& param)
+  explicit FocalSoftmaxLossLayer(const LayerParameter& param)
       : LossLayer<Dtype>(param) {}
   virtual void LayerSetUp(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top);
   virtual void Reshape(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top);
 
-  virtual inline const char* type() const { return "FocalSigmoidLoss"; }
+  virtual inline const char* type() const { return "FocalSoftmaxLoss"; }
   virtual inline int ExactNumTopBlobs() const { return -1; }
   virtual inline int MinTopBlobs() const { return 1; }
   virtual inline int MaxTopBlobs() const { return 2; }
@@ -44,24 +43,20 @@ class FocalSigmoidLossLayer : public LossLayer<Dtype> {
   virtual Dtype get_normalizer(
       LossParameter_NormalizationMode normalization_mode, int valid_count);
 
-  void compute_intermediate_values_of_cpu(const Dtype* target);
-  void compute_intermediate_values_of_gpu(const Dtype* target);
+  void compute_intermediate_values_of_cpu();
+  void compute_intermediate_values_of_gpu();
 
-  /// The internal SigmoidLayer used to map predictions to probabilities.
-  shared_ptr<Layer<Dtype> > sigmoid_layer_;
-  /// prob stores the output probability predictions from the SigmoidLayer.
-  Blob<Dtype> prob_;            // sigmoid output p_t
-  Blob<Dtype> log_prob_;        // log(p_t)
-  Blob<Dtype> log_neg_prob_;    // log(1 - p_t)
-  Blob<Dtype> power_prob_;      // alpha * p_t ^ gamma
-  Blob<Dtype> power_neg_prob_;  // alpha * (1 - p_t) ^ gamma
-  Blob<Dtype> power_penalty_;   // (1 - y_t) ^ beta reduces the penalty around the ground truth locations.
-  Blob<Dtype> ones_;            // 1
-
-  /// bottom vector holder used in call to the underlying SigmoidLayer::Forward
-  vector<Blob<Dtype>*> sigmoid_bottom_vec_;
-  /// top vector holder used in call to the underlying SigmoidLayer::Forward
-  vector<Blob<Dtype>*> sigmoid_top_vec_;
+  /// The internal SoftmaxLayer used to map predictions to a distribution.
+  shared_ptr<Layer<Dtype> > softmax_layer_;
+  /// prob stores the output probability predictions from the SoftmaxLayer.
+  Blob<Dtype> prob_;        // softmax output p_t
+  Blob<Dtype> log_prob_;    // log(p_t)
+  Blob<Dtype> power_prob_;  // alpha * (1 - p_t) ^ gamma
+  Blob<Dtype> ones_;        // 1
+  /// bottom vector holder used in call to the underlying SoftmaxLayer::Forward
+  vector<Blob<Dtype>*> softmax_bottom_vec_;
+  /// top vector holder used in call to the underlying SoftmaxLayer::Forward
+  vector<Blob<Dtype>*> softmax_top_vec_;
   /// Whether to ignore instances with a certain label.
   bool has_ignore_label_;
   /// The label indicating that an instance should be ignored.
@@ -69,12 +64,15 @@ class FocalSigmoidLossLayer : public LossLayer<Dtype> {
   /// How to normalize the output loss.
   LossParameter_NormalizationMode normalization_;
   ///
-  // FocalSigmoidLossParameter_Type type_;
+  FocalSoftmaxLossParameter_Type type_;
 
   Dtype alpha_, beta_, gamma_;
-  int outer_num_, inner_num_;
+  int softmax_axis_, outer_num_, inner_num_;
+
+  /// WeightedSoftmaxWithLossParameter
+  Blob<Dtype> label_weight_;  // cached for label_weight_
 };
 
 }  // namespace caffe
 
-#endif  // CAFFE_FOCAL_SIGMOID_LOSS_LAYER_HPP_
+#endif  // CAFFE_FOCAL_SOFTMAX_LOSS_LAYER_HPP_

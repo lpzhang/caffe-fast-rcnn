@@ -2,13 +2,13 @@
 #include <cfloat>
 #include <vector>
 
-#include "caffe/layers/focal_sigmoid_loss_layer.hpp"
+#include "caffe/layers/hm_focal_sigmoid_loss_layer.hpp"
 #include "caffe/util/math_functions.hpp"
 
 namespace caffe {
 
 template <typename Dtype>
-void FocalSigmoidLossLayer<Dtype>::LayerSetUp(
+void HMFocalSigmoidLossLayer<Dtype>::LayerSetUp(
     const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top)
 {
   // sigmoid laye setup
@@ -40,20 +40,23 @@ void FocalSigmoidLossLayer<Dtype>::LayerSetUp(
   }
 
   // focal sigmoid loss parameter
-  FocalSigmoidLossParameter focal_sigmoid_loss_param = this->layer_param_.focal_sigmoid_loss_param();
-  alpha_ = focal_sigmoid_loss_param.alpha();
-  beta_  = focal_sigmoid_loss_param.beta();
-  gamma_ = focal_sigmoid_loss_param.gamma();
+  HMFocalSigmoidLossParameter hm_focal_sigmoid_loss_param = this->layer_param_.hm_focal_sigmoid_loss_param();
+  alpha_  = hm_focal_sigmoid_loss_param.alpha();
+  beta_   = hm_focal_sigmoid_loss_param.beta();
+  gamma_  = hm_focal_sigmoid_loss_param.gamma();
+  radius_ = hm_focal_sigmoid_loss_param.radius();
   LOG(INFO) << "alpha: " << alpha_;
   LOG(INFO) << "beta: "  << beta_;
   LOG(INFO) << "gamma: " << gamma_;
+  LOG(INFO) << "radius: " << radius_;
   CHECK_GT(alpha_, 0) << "alpha must be larger than zero";
   CHECK_GE(beta_,  0) << "beta must be larger than or equal to zero";
   CHECK_GE(gamma_, 0) << "gamma must be larger than or equal to zero";
+  CHECK_GT(radius_, 0) << "radius must be larger than zero";
 }
 
 template <typename Dtype>
-void FocalSigmoidLossLayer<Dtype>::Reshape(
+void HMFocalSigmoidLossLayer<Dtype>::Reshape(
     const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top)
 {
   LossLayer<Dtype>::Reshape(bottom, top);
@@ -96,7 +99,7 @@ void FocalSigmoidLossLayer<Dtype>::Reshape(
 }
 
 template <typename Dtype>
-Dtype FocalSigmoidLossLayer<Dtype>::get_normalizer(
+Dtype HMFocalSigmoidLossLayer<Dtype>::get_normalizer(
     LossParameter_NormalizationMode normalization_mode, int valid_count)
 {
   Dtype normalizer;
@@ -127,7 +130,7 @@ Dtype FocalSigmoidLossLayer<Dtype>::get_normalizer(
 }
 
 template <typename Dtype>
-void FocalSigmoidLossLayer<Dtype>::compute_intermediate_values_of_cpu(const Dtype* target) {
+void HMFocalSigmoidLossLayer<Dtype>::compute_intermediate_values_of_cpu(const Dtype* target) {
   // compute the corresponding variables
   const int count        = prob_.count();
   const Dtype* prob_data = prob_.cpu_data();
@@ -161,7 +164,7 @@ void FocalSigmoidLossLayer<Dtype>::compute_intermediate_values_of_cpu(const Dtyp
 }
 
 template <typename Dtype>
-void FocalSigmoidLossLayer<Dtype>::Forward_cpu(
+void HMFocalSigmoidLossLayer<Dtype>::Forward_cpu(
     const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top)
 {
   // The forward pass computes the sigmoid prob values.
@@ -180,10 +183,10 @@ void FocalSigmoidLossLayer<Dtype>::Forward_cpu(
   const int count = bottom[0]->count();
   Dtype loss = 0;
   Dtype num_pos = Dtype(0.0);
-  const Dtype eps = Dtype(1e-4);
+
   if (bottom.size() == 2) {
     for (int i = 0; i < count; ++i) {
-      if (fabs(Dtype(1.0) - target[i]) < eps) {
+      if (fabs(Dtype(1.0) - target[i]) <= radius_) {
         // positive location target value equal to 1
         // - [ alpha * (1 - p_t) ^ gamma ] * [ log(p_t) ]
         loss -= power_neg_prob_data[i] * log_prob_data[i];
@@ -199,11 +202,12 @@ void FocalSigmoidLossLayer<Dtype>::Forward_cpu(
     const Dtype* weights = bottom[2]->cpu_data();
     // Dtype weight_sum = Dtype(0.0);
     for (int i = 0; i < count; ++i) {
-      if (fabs(Dtype(1.0) - target[i]) < eps) {
+      if (fabs(Dtype(1.0) - target[i]) <= radius_) {
         // positive location target value equal to 1
         // - [ weights ] * [ alpha * (1 - p_t) ^ gamma ] * [ log(p_t) ]
         loss -= weights[i] * power_neg_prob_data[i] * log_prob_data[i];
-        num_pos += weights[i];
+        // num_pos += weights[i];
+        num_pos += 1.0;
       } else {
         // negative location target value less than 1
         // - [ weights ] * [ alpha * p_t ^ gamma ] * [ log(1 - p_t) ] * [ (1 - y_t) ^ beta ]
@@ -218,7 +222,7 @@ void FocalSigmoidLossLayer<Dtype>::Forward_cpu(
     // }
   }
   // Normalization
-  if (num_pos > Dtype(eps)) {
+  if (num_pos > 0) {
     top[0]->mutable_cpu_data()[0] = loss / num_pos;
   } else {
     top[0]->mutable_cpu_data()[0] = loss;
@@ -230,7 +234,7 @@ void FocalSigmoidLossLayer<Dtype>::Forward_cpu(
 }
 
 template <typename Dtype>
-void FocalSigmoidLossLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
+void HMFocalSigmoidLossLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
     const vector<bool>& propagate_down, const vector<Blob<Dtype>*>& bottom)
 {
   if (propagate_down[1]) {
@@ -252,11 +256,11 @@ void FocalSigmoidLossLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
 
     const int count = bottom[0]->count();
     const Dtype loss_weight = top[0]->cpu_diff()[0]; // Scale down gradient
-    const Dtype eps = Dtype(1e-4);
     Dtype num_pos = Dtype(0.0);
+    
     if (bottom.size() == 2) {
       for (int i = 0; i < count; ++i) {
-        if (fabs(Dtype(1.0) - target[i]) < eps) {
+        if (fabs(Dtype(1.0) - target[i]) <= radius_) {
           // positive location target value equal to 1
           // - [ alpha * (1 - p_t) ^ gamma ] * [ - gamma * p_t * log(p_t) + (1 - p_t) ]
           bottom_diff[i] = 0 - power_neg_prob_data[i] 
@@ -277,12 +281,13 @@ void FocalSigmoidLossLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
       // Dtype weight_sum = 0.0;
       for (int i = 0; i < count; ++i) {
         // bottom_diff[i] *= weights[i];
-        if (fabs(Dtype(1.0) - target[i]) < eps) {
+        if (fabs(Dtype(1.0) - target[i]) <= radius_) {
           // positive location target value equal to 1
           // - [ weights ] * [ alpha * (1 - p_t) ^ gamma ] * [ - gamma * p_t * log(p_t) + (1 - p_t) ]
           bottom_diff[i] = 0 - weights[i] * power_neg_prob_data[i] 
                               * (0 - gamma_ * prob_data[i] * log_prob_data[i] + (1 - prob_data[i]));
-          num_pos += weights[i];
+          // num_pos += weights[i];
+          num_pos += 1.0;
         } else {
           // negative location target less than 1
           // - [ weights ] * [ alpha * p_t ^ gamma ] * [ gamma * (1 - p_t) * log(1 - p_t) - p_t ] * [ (1 - y_t) ^ beta ]
@@ -300,7 +305,7 @@ void FocalSigmoidLossLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
       // }
     }
     // Scale down gradient
-    if (num_pos > eps) {
+    if (num_pos > 0) {
       caffe_scal(count, loss_weight / num_pos, bottom_diff);
     } else {
       caffe_scal(count, loss_weight, bottom_diff);
@@ -309,10 +314,10 @@ void FocalSigmoidLossLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
 }
 
 #ifdef CPU_ONLY
-STUB_GPU(FocalSigmoidLossLayer);
+STUB_GPU(HMFocalSigmoidLossLayer);
 #endif
 
-INSTANTIATE_CLASS(FocalSigmoidLossLayer);
-REGISTER_LAYER_CLASS(FocalSigmoidLoss);
+INSTANTIATE_CLASS(HMFocalSigmoidLossLayer);
+REGISTER_LAYER_CLASS(HMFocalSigmoidLoss);
 
 }  // namespace caffe

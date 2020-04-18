@@ -1,5 +1,5 @@
-#ifndef CAFFE_FOCAL_SIGMOID_LOSS_LAYER_HPP_
-#define CAFFE_FOCAL_SIGMOID_LOSS_LAYER_HPP_
+#ifndef CAFFE_HM_FOCAL_SIGMOID_LOSS_LAYER_HPP_
+#define CAFFE_HM_FOCAL_SIGMOID_LOSS_LAYER_HPP_
 
 #include <vector>
 
@@ -17,16 +17,16 @@ namespace caffe {
  * For details, see "CornerNet: Detecting Objects as Paired Keypoints"
  */
 template <typename Dtype>
-class FocalSigmoidLossLayer : public LossLayer<Dtype> {
+class HMFocalSigmoidLossLayer : public LossLayer<Dtype> {
  public:
-  explicit FocalSigmoidLossLayer(const LayerParameter& param)
+  explicit HMFocalSigmoidLossLayer(const LayerParameter& param)
       : LossLayer<Dtype>(param) {}
   virtual void LayerSetUp(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top);
   virtual void Reshape(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top);
 
-  virtual inline const char* type() const { return "FocalSigmoidLoss"; }
+  virtual inline const char* type() const { return "HMFocalSigmoidLoss"; }
   virtual inline int ExactNumTopBlobs() const { return -1; }
   virtual inline int MinTopBlobs() const { return 1; }
   virtual inline int MaxTopBlobs() const { return 2; }
@@ -72,10 +72,10 @@ class FocalSigmoidLossLayer : public LossLayer<Dtype> {
   ///
   // FocalSigmoidLossParameter_Type type_;
 
-  Dtype alpha_, beta_, gamma_;
+  Dtype alpha_, beta_, gamma_, radius_;
   int outer_num_, inner_num_;
 };
 
 }  // namespace caffe
 
-#endif  // CAFFE_FOCAL_SIGMOID_LOSS_LAYER_HPP_
+#endif  // CAFFE_HM_FOCAL_SIGMOID_LOSS_LAYER_HPP_

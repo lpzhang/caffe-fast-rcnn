@@ -427,7 +427,7 @@ message LayerParameter {
   optional DeformableConvolutionParameter deformable_convolution_param = 785;
   optional MultiStageMeanfieldParameter multi_stage_meanfield_param = 786;
   optional ShuffleChannelParameter shuffle_channel_param = 787;
-  optional FocalSigmoidLossParameter focal_sigmoid_loss_param = 788;
+  optional HMFocalSigmoidLossParameter hm_focal_sigmoid_loss_param = 788;
 // ZLP END to 788//
 }
 
@@ -1563,7 +1563,7 @@ message FocalSoftmaxLossParameter {
     LINEAR = 1; // FL*(p_t) = -log(p_t) / gama, where p_t = sigmoid(gama * x_t + beta), where x_t = x * y, y is the ground truth label {-1, 1}
   }
   optional Type type   = 1 [default = ORIGIN]; 
-  optional float gamma = 2 [default = 2];
+  optional float gamma = 2 [default = 2.0];
   // cross-categories weights to solve the imbalance problem
   optional float alpha = 3 [default = 0.25]; 
   optional float beta  = 4 [default = 1.0];
@@ -1709,13 +1709,15 @@ message ShuffleChannelParameter {
     optional uint32 group = 1 [default = 1]; // The number of group
 }
 
-// Message that stores parameters used by FocalSigmoidLossLayer
-message FocalSigmoidLossParameter {
+// Message that stores parameters used by HMFocalSigmoidLossLayer
+message HMFocalSigmoidLossParameter {
   // The scale, cross-categories weights to solve the imbalance problem
   optional float alpha = 1 [default = 0.25];
   // The exponent of reducing the penalty given to negative locations.
   optional float beta = 2 [default = 4.0];
   // The exponent of the focusing parameter
   optional float gamma = 3 [default = 2.0];
+  // the radius of the positive examples.
+  optional float radius = 4 [default = 1e-4];
 }
 // ZLP END//

@@ -2,7 +2,7 @@
 #include <cfloat>
 #include <vector>
 
-#include "caffe/layers/focal_sigmoid_loss_layer.hpp"
+#include "caffe/layers/hm_focal_sigmoid_loss_layer.hpp"
 #include "caffe/util/math_functions.hpp"
 
 namespace caffe {
@@ -18,7 +18,7 @@ __global__ void LogOpGPU(const int nthreads,
 }
 
 template <typename Dtype>
-void FocalSigmoidLossLayer<Dtype>::compute_intermediate_values_of_gpu(const Dtype* target) {
+void HMFocalSigmoidLossLayer<Dtype>::compute_intermediate_values_of_gpu(const Dtype* target) {
   // compute the corresponding variables
   const int count        = prob_.count();
   const Dtype* prob_data = prob_.gpu_data();
@@ -58,7 +58,7 @@ void FocalSigmoidLossLayer<Dtype>::compute_intermediate_values_of_gpu(const Dtyp
 }
 
 template <typename Dtype>
-__global__ void FocalSigmoidLossForwardGPU(const int nthreads,
+__global__ void HMFocalSigmoidLossForwardGPU(const int nthreads,
           const Dtype* log_prob_data, 
           const Dtype* log_neg_prob_data, 
           const Dtype* power_prob_data, 
@@ -67,10 +67,10 @@ __global__ void FocalSigmoidLossForwardGPU(const int nthreads,
           const Dtype* target, 
           Dtype* loss, 
           Dtype* counts,
-          const Dtype eps) 
+          const Dtype radius) 
 {
   CUDA_KERNEL_LOOP(index, nthreads) {
-    if (fabs(Dtype(1.0) - target[index]) < eps) {
+    if (fabs(Dtype(1.0) - target[index]) <= radius) {
       // positive location target value equal to 1
       // - [ alpha * (1 - p_t) ^ gamma ] * [ log(p_t) ]
       loss[index] = 0 - power_neg_prob_data[index] * log_prob_data[index];
@@ -85,7 +85,7 @@ __global__ void FocalSigmoidLossForwardGPU(const int nthreads,
 }
 
 template <typename Dtype>
-void FocalSigmoidLossLayer<Dtype>::Forward_gpu(
+void HMFocalSigmoidLossLayer<Dtype>::Forward_gpu(
     const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top) 
 {
   // The forward pass computes the sigmoid prob values.
@@ -102,7 +102,6 @@ void FocalSigmoidLossLayer<Dtype>::Forward_gpu(
   const Dtype* power_neg_prob_data = power_neg_prob_.gpu_data();
   const Dtype* power_penalty_data  = power_penalty_.gpu_data();
   const int nthreads = prob_.count();
-  const Dtype eps = Dtype(1e-4);
 
   // Since this memory is not used for anything until it is overwritten
   // on the backward pass, we use it here to avoid having to allocate new GPU
@@ -115,14 +114,14 @@ void FocalSigmoidLossLayer<Dtype>::Forward_gpu(
   Dtype* counts = prob_.mutable_gpu_diff();
 
   // NOLINT_NEXT_LINE(whitespace/operators)
-  FocalSigmoidLossForwardGPU<Dtype><<<CAFFE_GET_BLOCKS(nthreads),
+  HMFocalSigmoidLossForwardGPU<Dtype><<<CAFFE_GET_BLOCKS(nthreads),
       CAFFE_CUDA_NUM_THREADS>>>(nthreads, log_prob_data, log_neg_prob_data, power_prob_data,
-        power_neg_prob_data, power_penalty_data, target, loss_data, counts, eps);
+        power_neg_prob_data, power_penalty_data, target, loss_data, counts, radius_);
 
   // weights in bottom[2] if any
   if (bottom.size() == 3) {
     caffe_gpu_mul(nthreads, bottom[2]->gpu_data(), bottom[0]->gpu_diff(), loss_data);
-    caffe_gpu_mul(nthreads, bottom[2]->gpu_data(), prob_.gpu_diff(), counts);
+    // caffe_gpu_mul(nthreads, bottom[2]->gpu_data(), prob_.gpu_diff(), counts);
   }
   Dtype loss;
   caffe_gpu_asum(nthreads, loss_data, &loss);
@@ -147,7 +146,7 @@ void FocalSigmoidLossLayer<Dtype>::Forward_gpu(
   // }
   Dtype num_pos = 0;
   caffe_gpu_asum(nthreads, counts, &num_pos);
-  if (num_pos > eps) {
+  if (num_pos > 0) {
     top[0]->mutable_cpu_data()[0] = loss / num_pos;
   } else {
     top[0]->mutable_cpu_data()[0] = loss;
@@ -159,7 +158,7 @@ void FocalSigmoidLossLayer<Dtype>::Forward_gpu(
 }
 
 template <typename Dtype>
-__global__ void FocalSigmoidLossBackwardGPU(const int nthreads, 
+__global__ void HMFocalSigmoidLossBackwardGPU(const int nthreads, 
           const Dtype* prob_data,
           const Dtype* log_prob_data, 
           const Dtype* log_neg_prob_data, 
@@ -170,10 +169,10 @@ __global__ void FocalSigmoidLossBackwardGPU(const int nthreads,
           Dtype* bottom_diff, 
           Dtype* counts,
           const Dtype gamma_,
-          const Dtype eps) 
+          const Dtype radius) 
 {
   CUDA_KERNEL_LOOP(index, nthreads) {
-    if (fabs(Dtype(1.0) - target[index]) < eps) {
+    if (fabs(Dtype(1.0) - target[index]) <= radius) {
       // positive location target value equal to 1
       // - [ alpha * (1 - p_t) ^ gamma ] * [ - gamma * p_t * log(p_t) + (1 - p_t) ]
       bottom_diff[index] = 0 - power_neg_prob_data[index] 
@@ -191,7 +190,7 @@ __global__ void FocalSigmoidLossBackwardGPU(const int nthreads,
 }
 
 template <typename Dtype>
-void FocalSigmoidLossLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
+void HMFocalSigmoidLossLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
     const vector<bool>& propagate_down, const vector<Blob<Dtype>*>& bottom) {
   if (propagate_down[1]) {
     LOG(FATAL) << this->type()
@@ -203,7 +202,6 @@ void FocalSigmoidLossLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
     // const Dtype* top_data  = top[0]->gpu_data();
     const Dtype* target    = bottom[1]->gpu_data();
     const int nthreads     = prob_.count();
-    const Dtype eps        = Dtype(1e-4);
 
     // intermidiate  
     const Dtype* log_prob_data   = log_prob_.gpu_data();
@@ -217,14 +215,14 @@ void FocalSigmoidLossLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
     Dtype* counts = prob_.mutable_gpu_diff();
 
     // NOLINT_NEXT_LINE(whitespace/operators)
-    FocalSigmoidLossBackwardGPU<Dtype><<<CAFFE_GET_BLOCKS(nthreads),
+    HMFocalSigmoidLossBackwardGPU<Dtype><<<CAFFE_GET_BLOCKS(nthreads),
         CAFFE_CUDA_NUM_THREADS>>>(nthreads, prob_data, log_prob_data, log_neg_prob_data, power_prob_data,
-          power_neg_prob_data, power_penalty_data, target, bottom_diff, counts, gamma_, eps);
+          power_neg_prob_data, power_penalty_data, target, bottom_diff, counts, gamma_, radius_);
 
     // weights in bottom[2] if any
     if (bottom.size() == 3) {
       caffe_gpu_mul(nthreads, bottom[2]->gpu_data(), bottom[0]->gpu_diff(), bottom_diff);
-      caffe_gpu_mul(nthreads, bottom[2]->gpu_data(), prob_.gpu_diff(), counts);
+      // caffe_gpu_mul(nthreads, bottom[2]->gpu_data(), prob_.gpu_diff(), counts);
     }
     // // Only launch another CUDA kernel if we actually need the count of valid outputs.
     // Dtype valid_count = -1;
@@ -247,7 +245,7 @@ void FocalSigmoidLossLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
     // }
     Dtype num_pos = 0;
     caffe_gpu_asum(nthreads, counts, &num_pos);
-    if (num_pos > eps) {
+    if (num_pos > 0) {
       caffe_gpu_scal(nthreads, loss_weight / num_pos, bottom_diff);
     } else {
       caffe_gpu_scal(nthreads, loss_weight, bottom_diff);
@@ -255,6 +253,6 @@ void FocalSigmoidLossLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
   }
 }
 
-INSTANTIATE_LAYER_GPU_FUNCS(FocalSigmoidLossLayer);
+INSTANTIATE_LAYER_GPU_FUNCS(HMFocalSigmoidLossLayer);
 
 }  // namespace caffe

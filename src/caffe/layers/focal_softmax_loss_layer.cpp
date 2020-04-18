@@ -76,11 +76,22 @@ void FocalSoftmaxLossLayer<Dtype>::Reshape(
   if (top.size() >= 2) {
     top[1]->ReshapeLike(*bottom[0]);
   }
-
+  /*
+    FL(p_t) = - alpha * (1 - p_t) ^ gamma * log(p_t)
+            = - alpha * (1 - p_t) ^ (gamma - 1) * (1 - p_t) * log(p_t)
+    grad(t == k):
+            = alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ gamma) * (p_t - 1)
+            = alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ (gamma - 1) * (1 - p_t)) * (p_t -1)
+            = (- gamma * [alpha * (1 - p_t) ^ (gamma - 1)] * p_t * log(p_t) + [alpha * (1 - p_t) ^ (gamma - 1)] * (1 - p_t)) * (p_t -1)
+    grad(t != k):
+            = alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ gamma) * p_k
+            = alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ (gamma - 1) * (1 - p_t)) * p_k
+            = (- gamma * [alpha * (1 - p_t) ^ (gamma - 1)] * p_t * log(p_t) + [alpha * (1 - p_t) ^ (gamma - 1)] * (1 - p_t)) * p_k
+  */
   // log(p_t)
   log_prob_.ReshapeLike(*bottom[0]);
   CHECK_EQ(prob_.count(), log_prob_.count());
-  // alpha * (1 - p_t) ^ gamma
+  // alpha * (1 - p_t) ^ (gamma - 1)
   power_prob_.ReshapeLike(*bottom[0]);
   CHECK_EQ(prob_.count(), power_prob_.count());
   // 1
@@ -88,9 +99,8 @@ void FocalSoftmaxLossLayer<Dtype>::Reshape(
   CHECK_EQ(prob_.count(), ones_.count());
   caffe_set(prob_.count(), Dtype(1), ones_.mutable_cpu_data());
 
-  // ADD(ZLP)
   // if size of bottom equal 3, then use bottom[2] as weighted blob
-  if (bottom.size() <= 2) {
+  if (bottom.size() == 2) {
     const WeightedSoftmaxWithLossParameter& weighted_softmax_loss_param = this->layer_param_.weighted_softmax_loss_param();
     CHECK_EQ(weighted_softmax_loss_param.label_weight_size(), weighted_softmax_loss_param.label_id_size())
           << "label_weight_size must equal to label_id_size";
@@ -114,12 +124,10 @@ void FocalSoftmaxLossLayer<Dtype>::Reshape(
           << "e.g., if softmax axis == 1 and prediction shape is (N, C, H, W), "
           << "label_id must be integer values in {0, 1, ..., C-1}.";
       label_weight_data[label_id] = weighted_softmax_loss_param.label_weight(i);
+    } else {
+      CHECK_EQ(bottom[1]->count(), bottom[2]->count());
     }
-    // for (int i = 0; i < bottom[0]->count(softmax_axis_, softmax_axis_ + 1); ++i) {
-    //   LOG(INFO) << label_weight_data[i];
-    // }
   }
-  // END(ZLP)
 }
 
 template <typename Dtype>
@@ -170,9 +178,9 @@ void FocalSoftmaxLossLayer<Dtype>::compute_intermediate_values_of_cpu() {
   }
   /// caffe_log(count,  prob_data, log_prob_data);
 
-  /// alpha* (1 - p_t) ^ gamma
+  /// alpha * (1 - p_t) ^ (gamma - 1)
   caffe_sub(count,  ones_data, prob_data, power_prob_data);
-  caffe_powx(count, power_prob_.cpu_data(), gamma_, power_prob_data);
+  caffe_powx(count, power_prob_.cpu_data(), gamma_ - 1, power_prob_data);
   caffe_scal(count, alpha_, power_prob_data);
 }
 
@@ -185,20 +193,19 @@ void FocalSoftmaxLossLayer<Dtype>::Forward_cpu(
 
   // compute all needed values
   compute_intermediate_values_of_cpu();
+  const Dtype* prob_data       = prob_.cpu_data();
   const Dtype* label           = bottom[1]->cpu_data();
   const Dtype* log_prob_data   = log_prob_.cpu_data();
   const Dtype* power_prob_data = power_prob_.cpu_data();
 
-  // ADD(ZLP)
   // Get label_weight_data
   const Dtype* label_weight_data;
-  if (bottom.size() <= 2) {
+  if (bottom.size() == 2) {
     label_weight_data = label_weight_.cpu_data();
   } else {
     // Get label_weight_data from bottom[2]
     label_weight_data = bottom[2]->cpu_data();
   }
-  // END(ZLP)
 
   // compute loss
   int count    = 0;
@@ -214,22 +221,28 @@ void FocalSoftmaxLossLayer<Dtype>::Forward_cpu(
       }
       DCHECK_GE(label_value, 0);
       DCHECK_LT(label_value, channels);
-      const int index = i * dim + label_value * inner_num_ + j;
-      // FL(p_t) = -(1 - p_t) ^ gamma * log(p_t)
-      // loss -= std::max(power_prob_data[index] * log_prob_data[index],
-      //                      Dtype(log(Dtype(FLT_MIN))));
-      // loss -= power_prob_data[index] * log_prob_data[index];
-
-      // ADD(ZLP)
+      /*
+        FL(p_t) = - alpha * (1 - p_t) ^ gamma * log(p_t)
+                = - alpha * (1 - p_t) ^ (gamma - 1) * (1 - p_t) * log(p_t)
+        grad(t == k):
+                = alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ gamma) * (p_t - 1)
+                = alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ (gamma - 1) * (1 - p_t)) * (p_t -1)
+                = (- gamma * [alpha * (1 - p_t) ^ (gamma - 1)] * p_t * log(p_t) + [alpha * (1 - p_t) ^ (gamma - 1)] * (1 - p_t)) * (p_t -1)
+        grad(t != k):
+                = alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ gamma) * p_k
+                = alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ (gamma - 1) * (1 - p_t)) * p_k
+                = (- gamma * [alpha * (1 - p_t) ^ (gamma - 1)] * p_t * log(p_t) + [alpha * (1 - p_t) ^ (gamma - 1)] * (1 - p_t)) * p_k
+      */
       // Get weight and then Weight the loss
       Dtype w = 1;
-      if (bottom.size() <= 2) {
+      if (bottom.size() == 2) {
         w = label_weight_data[label_value];
       } else {
         w = label_weight_data[i * inner_num_ + j];
       }
-      loss -= w * power_prob_data[index] * log_prob_data[index];
-      // END(ZLP)
+      const int ind_t  = i * dim + label_value * inner_num_ + j;
+      // FL(p_t) = - [alpha * (1 - p_t) ^ (gamma - 1)] * [(1 - p_t)] * [log(p_t)]
+      loss -= w * power_prob_data[ind_t] * (1 - prob_data[ind_t]) * log_prob_data[ind_t];
 
       ++count;
     }
@@ -260,27 +273,23 @@ void FocalSoftmaxLossLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
     const Dtype* log_prob_data   = log_prob_.cpu_data();
     const Dtype* power_prob_data = power_prob_.cpu_data();
 
-    // ADD(ZLP)
     // Get label_weight_data
     const Dtype* label_weight_data;
-    if (bottom.size() <= 2) {
+    if (bottom.size() == 2) {
       label_weight_data = label_weight_.cpu_data();
     } else {
       // Get label_weight_data from bottom[2]
       label_weight_data = bottom[2]->cpu_data();
     }
-    // END(ZLP)
 
     int count       = 0;
     int channels    = bottom[0]->shape(softmax_axis_);
     int dim         = prob_.count() / outer_num_;
-    const Dtype eps = 1e-10;
 
     for (int i = 0; i < outer_num_; ++i) {
       for (int j = 0; j < inner_num_; ++j) {
         // label
         const int label_value = static_cast<int>(label[i * inner_num_ + j]);
-
         // ignore label
         if (has_ignore_label_ && label_value == ignore_label_) {
           for (int c = 0; c < channels; ++c) {
@@ -288,46 +297,44 @@ void FocalSoftmaxLossLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
           }
           continue;
         }
-
+        /*
+          FL(p_t) = - alpha * (1 - p_t) ^ gamma * log(p_t)
+                  = - alpha * (1 - p_t) ^ (gamma - 1) * (1 - p_t) * log(p_t)
+          grad(t == k):
+                  = alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ gamma) * (p_t - 1)
+                  = alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ (gamma - 1) * (1 - p_t)) * (p_t -1)
+                  = (- gamma * [alpha * (1 - p_t) ^ (gamma - 1)] * p_t * log(p_t) + [alpha * (1 - p_t) ^ (gamma - 1)] * (1 - p_t)) * (p_t -1)
+          grad(t != k):
+                  = alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ gamma) * p_k
+                  = alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ (gamma - 1) * (1 - p_t)) * p_k
+                  = (- gamma * [alpha * (1 - p_t) ^ (gamma - 1)] * p_t * log(p_t) + [alpha * (1 - p_t) ^ (gamma - 1)] * (1 - p_t)) * p_k
+        */
         // the gradient from FL w.r.t p_t, here ignore the `sign`
-        int ind_i  = i * dim + label_value * inner_num_ + j; // index of ground-truth label
-        Dtype grad = 0 - gamma_ * (power_prob_data[ind_i] / std::max(1 - prob_data[ind_i], eps))
-                                * log_prob_data[ind_i] * prob_data[ind_i]
-                       + power_prob_data[ind_i];
+        // index of ground-truth label in prob.
+        const int ind_t  = i * dim + label_value * inner_num_ + j;
+        // alpha * (- gamma * (1 - p_t) ^ (gamma - 1) * p_t * log(p_t) + (1 - p_t) ^ (gamma - 1) * (1 - p_t))
+        // - gamma * [alpha * (1 - p_t) ^ (gamma - 1)] * p_t * log(p_t) + [alpha * (1 - p_t) ^ (gamma - 1)] * (1 - p_t)
+        Dtype grad = 0 - gamma_ * power_prob_data[ind_t] * prob_data[ind_t] * log_prob_data[ind_t]
+                        + power_prob_data[ind_t] * (1 - prob_data[ind_t]);
         // the gradient w.r.t input data x
-        // for (int c = 0; c < channels; ++c) {
-        //   int ind_j = i * dim + c * inner_num_ + j;
-        //   if(c == label_value) {
-        //     CHECK_EQ(ind_i, ind_j);
-        //     // if i == j, (here i,j are refered for derivative of softmax)
-        //     bottom_diff[ind_j] = grad * (prob_data[ind_i] - 1);
-        //   } else {
-        //     // if i != j, (here i,j are refered for derivative of softmax)
-        //     bottom_diff[ind_j] = grad * prob_data[ind_j];
-        //   }
-        // }
-
-        // ADD(ZLP)
         // Get weight and Weight each bottom[0]->shape(softmax_axis_)
         Dtype w = 1;
-        if (bottom.size() <= 2) {
+        if (bottom.size() == 2) {
             w = label_weight_data[label_value];
         } else {
             w = label_weight_data[i * inner_num_ + j];
         }
         for (int c = 0; c < channels; ++c) {
-          int ind_j = i * dim + c * inner_num_ + j;
+          int ind_k = i * dim + c * inner_num_ + j;
           if(c == label_value) {
-            CHECK_EQ(ind_i, ind_j);
-            // if i == j, (here i,j are refered for derivative of softmax)
-            bottom_diff[ind_j] = w * grad * (prob_data[ind_i] - 1);
+            CHECK_EQ(ind_t, ind_k);
+            // if t == k, (here t,k are refered for derivative of softmax), grad * (p_t -1)
+            bottom_diff[ind_k] = w * grad * (prob_data[ind_t] - 1);
           } else {
-            // if i != j, (here i,j are refered for derivative of softmax)
-            bottom_diff[ind_j] = w * grad * prob_data[ind_j];
+            // if t != k, (here t,k are refered for derivative of softmax), grad * p_k
+            bottom_diff[ind_k] = w * grad * prob_data[ind_k];
           }
         }
-        // END(ZLP)
-
         // count
         ++count;
       }

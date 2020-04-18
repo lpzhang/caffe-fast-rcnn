@@ -6,7 +6,6 @@
 #include "caffe/blob.hpp"
 #include "caffe/layer.hpp"
 #include "caffe/proto/caffe.pb.h"
-
 #include "caffe/layers/loss_layer.hpp"
 #include "caffe/layers/softmax_layer.hpp"
 

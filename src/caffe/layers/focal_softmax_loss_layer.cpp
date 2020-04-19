@@ -124,9 +124,9 @@ void FocalSoftmaxLossLayer<Dtype>::Reshape(
           << "e.g., if softmax axis == 1 and prediction shape is (N, C, H, W), "
           << "label_id must be integer values in {0, 1, ..., C-1}.";
       label_weight_data[label_id] = weighted_softmax_loss_param.label_weight(i);
-    } else {
-      CHECK_EQ(bottom[1]->count(), bottom[2]->count());
     }
+  } else {
+    CHECK_EQ(bottom[1]->count(), bottom[2]->count());
   }
 }
 

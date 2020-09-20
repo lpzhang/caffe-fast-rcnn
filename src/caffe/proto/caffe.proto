@@ -384,7 +384,8 @@ message LayerParameter {
   optional ShuffleChannelParameter shuffle_channel_param = 787;
   optional HMFocalSigmoidLossParameter hm_focal_sigmoid_loss_param = 788;
   optional FocalSoftmaxLossParameter focal_softmax_loss_param = 789;
-// ZLP END to 788//
+  optional UpsampleParameter upsample_param = 790;
+// ZLP END to 790//
 }
 
 // Message that stores parameters used to apply transformation
@@ -1518,5 +1519,26 @@ message FocalSoftmaxLossParameter {
   // cross-categories weights to solve the imbalance problem
   optional float alpha = 3 [default = 0.25]; 
   optional float beta  = 4 [default = 1.0];
+}
+
+// Message that stores parameters used by UpsampleLayer
+message UpsampleParameter {
+  // DEPRECATED. No need to specify upsampling scale factors when
+  // exact output shape is given by upsample_h, upsample_w parameters.
+  optional uint32 scale = 1 [default = 2];
+  // DEPRECATED. No need to specify upsampling scale factors when
+  // exact output shape is given by upsample_h, upsample_w parameters.
+  optional uint32 scale_h = 2;
+  // DEPRECATED. No need to specify upsampling scale factors when
+  // exact output shape is given by upsample_h, upsample_w parameters.
+  optional uint32 scale_w = 3;
+  // DEPRECATED. Specify exact output height using upsample_h. This
+  // parameter only works when scale is 2
+  optional bool pad_out_h = 4 [default = false];
+  // DEPRECATED. Specify exact output width using upsample_w. This
+  // parameter only works when scale is 2
+  optional bool pad_out_w = 5 [default = false];
+  optional uint32 upsample_h = 6;
+  optional uint32 upsample_w = 7;
 }
 // ZLP END//

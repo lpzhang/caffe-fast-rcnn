@@ -429,6 +429,7 @@ message LayerParameter {
   optional ShuffleChannelParameter shuffle_channel_param = 787;
   optional HMFocalSigmoidLossParameter hm_focal_sigmoid_loss_param = 788;
   optional UpsampleParameter upsample_param = 789;
+  optional NMSPoolingParameter nms_pooling_param = 790;
 // ZLP END to 789//
 }
 
@@ -1741,5 +1742,36 @@ message UpsampleParameter {
   optional bool pad_out_w = 5 [default = false];
   optional uint32 upsample_h = 6;
   optional uint32 upsample_w = 7;
+}
+
+// Message that stores parameters used by NMSPoolingParameter
+message NMSPoolingParameter {
+  // enum PoolMethod {
+  //   MAX = 0;
+  //   AVE = 1;
+  //   STOCHASTIC = 2;
+  // }
+  // optional PoolMethod pool = 1 [default = MAX]; // The pooling method
+  // Pad, kernel size, and stride are all given as a single value for equal
+  // dimensions in height and width or as Y, X pairs.
+  // optional uint32 pad = 1 [default = 0]; // The padding size (equal in Y, X)
+  // optional uint32 pad_h = 2 [default = 0]; // The padding height
+  // optional uint32 pad_w = 3 [default = 0]; // The padding width
+  optional uint32 kernel_size = 1; // The kernel size (square)
+  optional uint32 kernel_h = 2; // The kernel height
+  optional uint32 kernel_w = 3; // The kernel width
+  optional float beta = 4 [default = 0.0];
+  // optional uint32 stride = 7 [default = 1]; // The stride (equal in Y, X)
+  // optional uint32 stride_h = 8; // The stride height
+  // optional uint32 stride_w = 9; // The stride width
+  // enum Engine {
+  //   DEFAULT = 0;
+  //   CAFFE = 1;
+  //   CUDNN = 2;
+  // }
+  // optional Engine engine = 11 [default = DEFAULT];
+  // // If global_pooling then it will pool over the size of the bottom by doing
+  // // kernel_h = bottom->height and kernel_w = bottom->width
+  // optional bool global_pooling = 12 [default = false];
 }
 // ZLP END//
